@@ -1,6 +1,6 @@
 .PHONY: sim gui down build build-base logs shell-dev shell-sim shell-core help
 
-COMPOSE_SIM  = compose.sim.yaml
+COMPOSE_SIM  = compose/compose.sim.yaml
 COMPOSE_REAL = compose/compose.real.yaml
 
 help:
@@ -42,6 +42,11 @@ logs:
 
 gui:
 	@./sim/run_gui.sh
+
+gz-topics:
+	@PX4_IP=$$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' pickme-sim 2>/dev/null | tr -d '[:space:]'); \
+	echo "Checking Gazebo topics on $$PX4_IP (partition: sim)..."; \
+	GZ_PARTITION=sim GZ_RELAY=$$PX4_IP gz topic -l
 
 # ── Shells ──
 shell-dev:

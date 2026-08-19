@@ -12,7 +12,7 @@ services:
   # Critical: keeps drone controllable even if other containers crash
   px4-bridge:
     build:
-      context: .
+      context: ..
       dockerfile: docker/px4-bridge.Dockerfile
     network_mode: host
     restart: unless-stopped
@@ -24,7 +24,7 @@ services:
   # Publishes: /camera/color/image_raw, /camera/depth/*, /camera/depth/color/points
   camera:
     build:
-      context: .
+      context: ..
       dockerfile: docker/camera.Dockerfile
     network_mode: host
     restart: unless-stopped
@@ -39,7 +39,7 @@ services:
   # Future:   pickme_localization, pickme_slam
   core:
     build:
-      context: .
+      context: ..
       dockerfile: docker/core.Dockerfile
     network_mode: host
     restart: unless-stopped
@@ -54,14 +54,14 @@ services:
   # Usage:  docker exec -it pickme-dev bash → colcon build → ros2 launch ...
   dev:
     build:
-      context: .
+      context: ..
       dockerfile: docker/dev.Dockerfile
     container_name: pickme-dev
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=0
     volumes:
-      - ./src/pickme_missions:/home/developer/workspace/src/pickme_missions
+      - ../src/pickme_missions:/home/developer/workspace/src/pickme_missions
     command: tail -f /dev/null
     depends_on:
       - core
