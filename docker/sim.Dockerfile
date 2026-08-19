@@ -61,33 +61,10 @@ RUN git clone -b release/1.15 https://github.com/PX4/PX4-Autopilot.git --recursi
     git submodule update --init --recursive && \
     make px4_sitl
 
-# 6. Create entrypoint script
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Start Micro-XRCE-DDS Agent in background\n\
-MicroXRCEAgent udp4 -p 8888 &\n\
-\n\
-# Start MAVLink-router in background\n\
-# mavlink-routerd requires a valid IP address, so we resolve host.docker.internal\n\
-HOST_IP=$(getent hosts host.docker.internal | awk '\''{ print $1 }'\'' | head -n 1)\n\
-if [ -n "$HOST_IP" ]; then\n\
-    mavlink-routerd -e ${HOST_IP}:14550 127.0.0.1:14550 &\n\
-fi\n\
-\n\
-export PX4_GZ_STANDALONE=1\n\
-export PX4_SIM_MODEL=${PX4_SIM_MODEL:-gz_x500}\n\
-export GZ_SIM_RESOURCE_PATH=/home/developer/PX4-Autopilot/Tools/simulation/gz/models:/home/developer/PX4-Autopilot/Tools/simulation/gz/worlds\${GZ_SIM_RESOURCE_PATH:+:\$GZ_SIM_RESOURCE_PATH}\n\
-\n\
-# Start Gazebo server (headless, no GUI) in background\n\
-gz sim -s -r ${GZ_WORLD:-/home/developer/worlds/default.sdf} &\n\
-GZ_PID=$!\n\
-echo "Waiting for Gazebo server (PID $GZ_PID) to initialize..."\n\
-sleep 5\n\
-\n\
-# Start PX4 SITL - connects to local Gazebo and spawns drone model\n\
-cd /home/developer/PX4-Autopilot\n\
-make px4_sitl ${PX4_SIM_MODEL}\n\
-' > /home/$USERNAME/entrypoint.sh && chmod +x /home/$USERNAME/entrypoint.sh
+# 6. Copy entrypoint script
+USER root
+COPY docker/sim-entrypoint.sh /home/$USERNAME/entrypoint.sh
+RUN chmod +x /home/$USERNAME/entrypoint.sh
+USER $USERNAME
 
 ENTRYPOINT ["/home/developer/entrypoint.sh"]
