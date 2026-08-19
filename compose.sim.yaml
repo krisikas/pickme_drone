@@ -1,0 +1,66 @@
+# ============================================================================
+# compose.sim.yaml — Simulation stack (macOS dev machine)
+# ============================================================================
+# Replaces real hardware with software equivalents:
+#   px4-sim         → replaces physical flight controller
+#   sim-perception  → replaces camera driver (ros_gz_bridge)
+#   core            → same as real drone (commander services)
+#   pickme-dev      → same as real drone (mission sandbox)
+# ============================================================================
+
+networks:
+  ros_net:
+    driver: bridge
+
+services:
+  sim:
+    container_name: pickme-sim
+    tty: true
+    stdin_open: true
+    build:
+      context: .
+      dockerfile: docker/sim.Dockerfile
+    networks:
+      - ros_net
+    environment:
+      - PX4_SIM_MODEL=gz_x500_depth
+      - GZ_PARTITION=sim
+    volumes:
+      - ./sim/worlds:/home/developer/worlds:ro
+
+  sim-perception:
+    build:
+      context: .
+      dockerfile: docker/sim-perception.Dockerfile
+    networks:
+      - ros_net
+    environment:
+      - ROS_DOMAIN_ID=0
+      - GZ_PARTITION=sim
+
+  pickme-core:
+    build:
+      context: .
+      dockerfile: docker/core.Dockerfile
+    networks:
+      - ros_net
+    environment:
+      - ROS_DOMAIN_ID=0
+    ports:
+      - "8765:8765"
+    depends_on:
+      - sim
+
+  pickme-dev:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    networks:
+      - ros_net
+    environment:
+      - ROS_DOMAIN_ID=0
+    volumes:
+      - ./src/pickme_missions:/home/developer/workspace/src/pickme_missions
+    command: tail -f /dev/null
+    depends_on:
+      - pickme-core
