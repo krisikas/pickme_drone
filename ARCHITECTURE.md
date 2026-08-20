@@ -193,6 +193,7 @@ pickme_drone/
 ├── compose.sim.yaml                # Симуляция (в корне для удобства make sim)
 │
 ├── sim/
+│   ├── config/bridge.yaml          # Конфигурация ros_gz_bridge (камера, глубина, облако точек, /clock)
 │   ├── worlds/default.sdf
 │   ├── models/                     # 3D-меши (не в git, копируются из контейнера)
 │   └── run_gui.sh

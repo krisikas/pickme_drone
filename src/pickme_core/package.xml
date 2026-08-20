@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>pickme_commander</name>
+  <name>pickme_core</name>
   <version>0.1.0</version>
   <description>PX4 flight command interface: arm, takeoff, land, offboard control via ROS 2 services</description>
   <maintainer email="dev@pickmedrone.local">Developer</maintainer>

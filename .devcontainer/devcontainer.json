@@ -1,0 +1,40 @@
+{
+  "name": "Pickme Drone Dev Sandbox",
+  "dockerComposeFile": [
+    "../compose/compose.sim.yaml"
+  ],
+  "service": "pickme-dev",
+  "workspaceFolder": "/home/developer/workspace",
+  "shutdownAction": "stopCompose",
+  "overrideCommand": false,
+  "remoteUser": "developer",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-vscode.cpptools",
+        "ms-iot.vscode-ros",
+        "twxs.cmake",
+        "ms-vscode.cmake-tools",
+        "redhat.vscode-yaml",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "ros.distro": "humble",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.analysis.extraPaths": [
+          "/opt/ros/humble/lib/python3.10/site-packages",
+          "/opt/ros/humble/local/lib/python3.10/dist-packages",
+          "/home/developer/workspace/install/pickme_missions/lib/python3.10/site-packages"
+        ],
+        "python.autoComplete.extraPaths": [
+          "/opt/ros/humble/lib/python3.10/site-packages",
+          "/opt/ros/humble/local/lib/python3.10/dist-packages"
+        ]
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@ networks:
   ros_net:
     driver: bridge
 
+name: pickme_drone
 services:
   sim:
     container_name: pickme-sim
@@ -65,7 +66,7 @@ services:
     environment:
       - ROS_DOMAIN_ID=0
     volumes:
-      - ../src/pickme_missions:/home/developer/workspace/src/pickme_missions
+      - ../workspace:/home/developer/workspace
     command: tail -f /dev/null
     depends_on:
       - pickme-core
