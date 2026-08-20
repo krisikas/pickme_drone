@@ -11,7 +11,7 @@ FROM pickme-base
 USER root
 
 # ── Copy and build stable packages ──
-COPY src/pickme_commander /tmp/core_ws/src/pickme_commander
+COPY src/pickme_core /tmp/core_ws/src/pickme_core
 
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
         cd /tmp/core_ws && \
@@ -26,4 +26,4 @@ RUN apt-get update && apt-get install -y \
 USER developer
 WORKDIR /home/developer
 
-CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch pickme_commander commander.launch.py"]
+CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch pickme_core core.launch.py"]

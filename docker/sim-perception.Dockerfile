@@ -34,8 +34,13 @@ WORKDIR /home/$USERNAME
 # Configure bash environment
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 
-# Run the ros_gz bridge for clock (and sensor topics)
+# Run the ros_gz bridge for clock and sensor topics (camera, depth camera, pointcloud)
 CMD ["/bin/bash", "-c", \
     "source /opt/ros/humble/setup.bash && \
      ros2 run ros_gz_bridge parameter_bridge \
-       /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
+       /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock \
+       /camera@sensor_msgs/msg/Image[gz.msgs.Image \
+       /camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo \
+       /depth_camera@sensor_msgs/msg/Image[gz.msgs.Image \
+       /depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo \
+       /depth_camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked"]

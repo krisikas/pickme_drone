@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'pickme_missions'
+package_name = 'pickme_core'
 
 setup(
     name=package_name,
@@ -17,11 +17,11 @@ setup(
     zip_safe=True,
     maintainer='Developer',
     maintainer_email='dev@pickmedrone.local',
-    description='Mission logic for PickmeDrone',
+    description='PX4 flight command interface for PickmeDrone',
     license='MIT',
     entry_points={
         'console_scripts': [
-            'example_mission = pickme_missions.example_mission:main',
+            'commander_node = pickme_core.commander_node:main',
         ],
     },
 )

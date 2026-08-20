@@ -61,8 +61,11 @@ services:
     environment:
       - ROS_DOMAIN_ID=0
     volumes:
-      - ../src/pickme_missions:/home/developer/workspace/src/pickme_missions
+      - share_fs:/home/developer/workspace
     command: tail -f /dev/null
     depends_on:
       - core
       - camera
+
+volumes:
+  share_fs:

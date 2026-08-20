@@ -5,7 +5,14 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='pickme_commander',
+            package='pickme_core',
+            executable='transform_node',
+            name='transform_node',
+            output='screen',
+            emulate_tty=True,
+        ),
+        Node(
+            package='pickme_core',
             executable='commander_node',
             name='commander_node',
             output='screen',
