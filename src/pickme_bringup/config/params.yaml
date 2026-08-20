@@ -1,0 +1,29 @@
+# Centralized configuration parameters for PickmeDrone
+
+odometry_node:
+  ros__parameters:
+    odom_frame: "odom"
+    base_frame: "base_link"
+    camera_frame: "camera_link"
+    camera_depth_frame: "camera_depth_frame"
+    camera_depth_optical_frame: "camera_depth_optical_frame"
+    camera_color_frame: "camera_color_frame"
+    camera_color_optical_frame: "camera_color_optical_frame"
+    camera_optical_frame: "camera_optical_frame"
+    imu_frame: "imu_link"
+    camera_offset_x: 0.132
+    camera_offset_y: 0.0
+    camera_offset_z: 0.021
+    publish_camera_tf: true
+    publish_odom_topic: true
+    odom_topic_name: "/odom"
+
+offboard_node:
+  ros__parameters:
+    default_speed: 1.0
+    takeoff_altitude: 2.0
+    geofence_radius: 25.0
+    geofence_min_alt: 0.0
+    geofence_max_alt: 15.0
+    odom_timeout_sec: 1.0
+    target_reached_threshold: 0.1
