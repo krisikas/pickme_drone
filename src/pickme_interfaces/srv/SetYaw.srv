@@ -1,0 +1,6 @@
+# Change yaw heading setpoint (in radians)
+float32 yaw
+string frame_id
+---
+bool success
+string message

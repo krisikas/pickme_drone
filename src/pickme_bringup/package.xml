@@ -2,12 +2,17 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>pickme_bringup</name>
-  <version>0.0.0</version>
-  <description>Bringup package for pickme drone</description>
-  <maintainer email="dev@example.com">Developer</maintainer>
-  <license>TODO: License declaration</license>
+  <version>0.1.0</version>
+  <description>System launch files and master parameter configurations for PickmeDrone</description>
+  <maintainer email="dev@pickmedrone.local">Developer</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>pickme_odometry</exec_depend>
+  <exec_depend>pickme_offboard</exec_depend>
+  <exec_depend>pickme_interfaces</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

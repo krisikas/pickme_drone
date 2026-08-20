@@ -1,280 +1,162 @@
 # PickmeDrone — Архитектура
 
-## 1. Философия
+## 1. Философия и принципы
 
-Система разделена на контейнеры **по уровню стабильности и зоне ответственности**, а не по ROS-пакетам.
+Система строится по принципу **многоуровневой модульности** и четкого разделения зон ответственности (Single Responsibility):
 
 | Принцип | Реализация |
 |---|---|
-| **Изоляция железа** | Каждый аппаратный ресурс (`/dev/ttyACM0`, `/dev/bus/usb`) пробрасывается только в тот контейнер, который с ним работает |
-| **Crash-изоляция** | Падение кода миссии в `dev` не убивает связь с полётником (`px4-bridge`) и не сбрасывает SLAM (`core`) |
-| **Быстрая итерация** | Dev-контейнер монтирует код через `volumes`, не требует пересборки образа при правке логики |
-| **Воспроизводимость** | Все зависимости описаны в Dockerfile'ах. Никаких `docker commit`. Сгорела плата — развернул за 10 минут |
-| **Смена платы** | Меняется только `base.Dockerfile` (и пути `/dev/*` в compose). Код в `src/` не трогается |
+| **Изоляция полетного ядра** | Ошибки в коде миссий (`dev`), падение веб-визуализатора (`foxglove`) или зависание алгоритмов **не роняют** полетный контур (`offboard`) |
+| **Единый контракт интерфейсов** | Все типы сообщений (`.msg`), сервисов (`.srv`) и действий (`.action`) изолированы в пакете `pickme_interfaces` |
+| **Sim-First подход** | Разработка и валидация на 100% ведутся в симуляторе Gazebo Harmonic + PX4 SITL. Переход на железо — это лишь подключение периферийных драйверов без изменения бизнес-логики |
+| **Быстрая итерация** | Код миссий и алгоритмов монтируется через Docker Volume в `dev`-песочницу, компилируется на лету без пересборки Docker-образов |
+| **Синхронность полетного контура** | Внутри `pickme_offboard` полетные классы объединены в единый C++ контекст (ноду) для исключения race conditions и задержек DDS при передаче уставок |
 
 ---
 
-## 2. Иерархия Docker-образов
+## 2. Иерархия Docker-контейнеров (Sim-First)
 
 ```
- ros:humble                      (официальный образ, поддерживает ARM64 и AMD64)
+ ros:humble (Официальный базовый образ)
          │
          ▼
   ┌──────────────┐
-  │ pickme-base  │  Собирается в CI или вручную, ~раз в месяц
-  │              │  ROS 2 Humble + px4_msgs + pickme_interfaces
-  │              │  + общие либы (Eigen, OpenCV, colcon)
+  │ pickme-base  │  ROS 2 Humble + px4_msgs + pickme_interfaces + Eigen/TF2
+  │              │  (ТОЛЬКО интерфейсы и общие системные библиотеки)
   └──────┬───────┘
          │
-         │  FROM pickme-base
-         ├────────────────────────────────────┐
-         │                                    │
-         ▼                                    ▼
-  ┌──────────────┐                   ┌──────────────────┐
-  │ pickme-core  │                   │  pickme-camera   │
-  │              │                   │                  │
-  │ Commander,   │                   │  librealsense2   │
-  │ SLAM, TF,    │                   │  realsense-ros   │
-  │ EKF, фильтры │                   │                  │
-  └──────────────┘                   └──────────────────┘
+         ├────────────────────────────────────┬────────────────────────┐
+         │  FROM pickme-base                  │  FROM pickme-base      │  FROM pickme-base
+         ▼                                    ▼                        ▼
+  ┌──────────────┐                     ┌──────────────┐         ┌──────────────┐
+  │ pickme-core  │                     │  pickme-dev  │         │pickme-       │
+  │              │                     │              │         │ foxglove     │
+  │ Полетный     │                     │  Песочница   │         │ (Автостарт UI│
+  │ контур:      │                     │  разработчика│         │  веб-панели  │
+  │ offboard,    │                     │  (gdb, rqt,  │         │  порт 8765)  │
+  │ odometry     │                     │   missions)  │         └──────────────┘
+  └──────────────┘                     └──────────────┘
 
-         │  FROM pickme-base                  FROM ubuntu:22.04
-         │                                    │
-         ▼                                    ▼
-  ┌──────────────┐                   ┌──────────────────┐
-  │  pickme-dev  │                   │ pickme-px4-bridge │
-  │              │                   │                  │
-  │  gdb, rqt,   │                   │ Micro-XRCE-DDS  │
-  │  foxglove,   │                   │ Agent            │
-  │  dev-tools   │                   │ (ROS не нужен)   │
-  └──────────────┘                   └──────────────────┘
+  ┌──────────────┐                     ┌────────────────────────┐
+  │  pickme-sim  │                     │  pickme-sim-perception │
+  │              │                     │                        │
+  │ PX4 SITL +   │                     │  ros_gz_bridge         │
+  │ Gazebo       │                     │  (RGB, Depth, Point-   │
+  │ Harmonic     │                     │   cloud, /clock)       │
+  └──────────────┘                     └────────────────────────┘
 ```
 
 ---
 
-## 3. Контейнеры: зоны ответственности
+## 3. Зоны ответственности контейнеров
 
 ### 3.1 `pickme-base`
+- **Содержимое**: ROS 2 Humble, скомпилированные интерфейсы `px4_msgs` и `pickme_interfaces`, системные библиотеки (Eigen, OpenCV, `tf2_ros`, colcon).
+- **Правило**: Никакого кода нод и алгоритмов. Пересобирается только при изменении `.msg`/`.srv` контрактов.
 
-Фундамент. Все ROS-контейнеры наследуются от него.
+### 3.2 `pickme-sim` & `pickme-sim-perception`
+- **`pickme-sim`**: Headless сервер PX4 SITL (v1.15.4) + Gazebo Harmonic + Micro-XRCE-DDS Agent + MAVLink Router.
+- **`pickme-sim-perception`**: `ros_gz_bridge` — маппит топики симуляции в стандартные ROS 2 топики сенсоров (`/camera/color/*`, `/camera/depth/*`, `/camera/depth/color/points`, `/clock`).
 
-| | |
-|---|---|
-| **Dockerfile** | `docker/base.Dockerfile` |
-| **Базовый образ** | `ros:humble` (поддерживает ARM64 для Radxa/Jetson/RPi) |
-| **Содержимое** | ROS 2 Humble, `px4_msgs` (скомпилированы), `pickme_interfaces` (скомпилированы), Eigen, OpenCV, colcon, rosdep |
-| **Пересборка** | При изменении интерфейсов или обновлении ROS-зависимостей (~раз в месяц) |
-| **Запускается?** | Нет. Это только базовый образ для сборки остальных |
+### 3.3 `pickme-core`
+- **Содержимое**: Стабильный полетный базис — `pickme_offboard` и `pickme_odometry`, запускаемые через `pickme_bringup/launch/core.launch.py`.
+- **Правило**: Работает непрерывно в фоне. Защищен от внешних падений.
 
----
-
-### 3.2 `pickme-px4-bridge`
-
-Связь с полётным контроллером PX4 и наземной станцией QGroundControl.
-
-| | |
-|---|---|
-| **Dockerfile** | `docker/px4-bridge.Dockerfile` |
-| **Базовый образ** | `ubuntu:22.04` (ROS не нужен, минимальный размер) |
-| **Содержимое** | Micro-XRCE-DDS Agent v2.4.3 |
-| **Железо** | `/dev/ttyACM0` (UART/USB к полётнику) |
-| **Критичность** | 🔴 Максимальная. Если этот контейнер упал — дрон потерял связь с ROS |
-| **Пересборка** | Почти никогда. Только при обновлении версии DDS Agent |
-
-> Этот контейнер **не содержит** твой код. Он только транслирует данные между PX4 (uORB) и ROS 2 (DDS).
-> Благодаря изоляции: даже если `dev` или `core` упадут с segfault, дрон управляется через пульт/QGC.
-
----
-
-### 3.3 `pickme-camera`
-
-Драйвер камеры глубины Intel RealSense D435.
-
-| | |
-|---|---|
-| **Dockerfile** | `docker/camera.Dockerfile` |
-| **Базовый образ** | `pickme-base` |
-| **Содержимое** | librealsense2 SDK, `realsense-ros` (humble branch) |
-| **Железо** | `/dev/bus/usb` (USB-шина камеры) |
-| **ROS-топики** | Публикует: `/camera/color/image_raw`, `/camera/depth/image_rect_raw`, `/camera/depth/color/points` |
-| **Критичность** | 🟡 Высокая. Без камеры нет восприятия, но дрон может безопасно зависнуть |
-| **Пересборка** | При обновлении SDK RealSense или смене модели камеры |
-
-> Если в будущем добавляется LiDAR — создаётся аналогичный `pickme-lidar` контейнер с пробросом своего `/dev/spidevX.X` или `/dev/ttyUSBX`.
-
----
-
-### 3.4 `pickme-core`
-
-Стабильные фоновые сервисы. `pickme_commander` живёт здесь.
-
-| | |
-|---|---|
-| **Dockerfile** | `docker/core.Dockerfile` |
-| **Базовый образ** | `pickme-base` |
-| **Содержимое** | `pickme_commander` (arm, takeoff, land, offboard heartbeat). В будущем: `pickme_localization` (EKF), `pickme_slam`, `pickme_transforms` (TF) |
-| **Железо** | Никакого. Работает только с ROS-топиками |
-| **ROS-сервисы** | `/pickme/arm`, `/pickme/disarm`, `/pickme/takeoff`, `/pickme/land` |
-| **ROS-топики** | Слушает: `/fmu/out/*`. Публикует: `/fmu/in/offboard_control_mode`, `/fmu/in/trajectory_setpoint` |
-| **Критичность** | 🟠 Средняя. Отлажен и стабилен, перезапускается редко |
-| **Пересборка** | При изменении commander или добавлении SLAM/EKF |
-
----
+### 3.4 `pickme-foxglove`
+- **Содержимое**: Сервер `foxglove_bridge` (порт 8765).
+- **Правило**: Автоматически стартует в `compose.sim.yaml` для мгновенной отладки в Foxglove Studio, но полностью изолирован от полетного ядра `core`.
 
 ### 3.5 `pickme-dev`
-
-Твоя рабочая песочница. Здесь пишется и тестируется логика миссий.
-
-| | |
-|---|---|
-| **Dockerfile** | `docker/dev.Dockerfile` |
-| **Базовый образ** | `pickme-base` |
-| **Содержимое** | Dev-инструменты: gdb, vim/nano, rqt, tmux. Пакет `pickme_missions` пробрасывается через volume |
-| **Железо** | Никакого. Работает только с ROS-топиками |
-| **Критичность** | 🟢 Низкая. Падает — остальные контейнеры продолжают работать |
-| **Пересборка** | При добавлении новых `apt`/`pip` зависимостей (через правку Dockerfile, не через `docker commit`!) |
+- **Содержимое**: Инструменты разработчика (`gdb`, `rqt`, `tmux`, `teleop`).
+- **Правило**: Директория `workspace/` или `src/` монтируется через Docker Volume. Разработчик пишет миссии и тестирует код на лету.
 
 ---
 
-## 4. Схема коммуникации (ROS 2 DDS)
+## 4. Архитектура ROS 2 пакетов (`src/`)
 
-Все контейнеры на реальном дроне используют `network_mode: host` и `ROS_DOMAIN_ID=0`.
-В симуляции контейнеры общаются через Docker bridge network `ros_net`.
-ROS 2 DDS автоматически обнаруживает ноды во всех контейнерах.
-
-```
-┌────────────────┐         ┌────────────────┐         ┌────────────────┐
-│ pickme-px4-    │         │ pickme-camera  │         │ pickme-core    │
-│ bridge         │         │                │         │                │
-│                │         │ [realsense_node]│        │ [commander_node]│
-│ [XRCE-DDS     │         │                │         │                │
-│  Agent]        │         │                │         │                │
-└───────┬────────┘         └───────┬────────┘         └──┬──────────┬──┘
-        │                          │                     │          │
-        │ /fmu/out/*               │ /camera/*           │ svc:     │
-        │ /fmu/in/*                │                     │ /pickme/ │
-        │                          │                     │ arm,land │
-  ──────┴──────────────────────────┴─────────────────────┴──────────┴───── ROS 2 DDS
-                                                                            (host network)
-        │                          │                     │          │
-        ▼                          ▼                     ▼          ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                          pickme-dev                                  │
-│                                                                      │
-│  [mission_node]     — вызывает сервисы /pickme/arm, /pickme/takeoff  │
-│                     — подписан на /camera/*, /fmu/out/*               │
-│                                                                      │
-│  docker exec -it pickme-dev bash                                     │
-│  colcon build --packages-select pickme_missions                      │
-│  ros2 launch pickme_missions example.launch.py                       │
-└──────────────────────────────────────────────────────────────────────┘
+```text
+src/
+├── pickme_interfaces/       # [Типы данных] ТОЛЬКО .msg, .srv, .action
+│   ├── msg/
+│   │   └── DroneState.msg   # Агрегированный статус дрона (armed, mode, battery, odom, flight_state)
+│   ├── srv/
+│   │   ├── Navigate.srv     # x, y, z, yaw, speed, frame_id, auto_arm -> success, message
+│   │   ├── SetAltitude.srv  # z, frame_id -> success, message
+│   │   ├── SetYaw.srv       # yaw, frame_id -> success, message
+│   │   └── GetTelemetry.srv # -> telemetry data (pos, vel, orientation, status)
+│   └── action/
+│       └── FollowTrajectory.action
+│
+├── pickme_odometry/         # [Оценка состояния и TF2]
+│   ├── include/pickme_odometry/
+│   │   └── odometry_node.hpp
+│   ├── src/
+│   │   └── odometry_node.cpp # PX4 NED -> ROS ENU, динамический TF (odom->base_link), статический TF камеры, /odom
+│   └── launch/
+│       └── odometry.launch.py
+│
+├── pickme_offboard/         # [Исполнительный полетный контур]
+│   ├── include/pickme_offboard/
+│   │   ├── heartbeat_manager.hpp # 10Hz Heartbeat (/fmu/in/offboard_control_mode)
+│   │   ├── trajectory_tracker.hpp # 20-50Hz плавная интерполяция к цели (speed * dt)
+│   │   └── safety_guard.hpp       # Проверка NaN/Inf, Geofence, watchdog одометрии
+│   ├── src/
+│   │   ├── offboard_node.cpp      # Основной координатор и сервисы /arm, /takeoff, /land, /navigate
+│   │   ├── heartbeat_manager.cpp
+│   │   ├── trajectory_tracker.cpp
+│   │   └── safety_guard.cpp
+│   └── launch/
+│       └── offboard.launch.py
+│
+├── pickme_missions/         # [Высокоуровневая логика миссий и Python SDK]
+│   ├── pickme_missions/
+│   │   ├── api.py           # Легкий Python SDK (drone.navigate, drone.takeoff, drone.land)
+│   │   └── flight_test.py   # Скрипты тестовых миссий
+│   └── launch/
+│       └── mission.launch.py
+│
+└── pickme_bringup/          # [Мастер-лаунчи и конфигурация]
+    ├── launch/
+    │   ├── core.launch.py   # Запускает odometry.launch.py + offboard.launch.py
+    │   └── foxglove.launch.py # Запуск foxglove_bridge
+    └── config/
+        └── params.yaml      # Все параметры системы (скорости, фреймы, лимиты, топики)
 ```
 
 ---
 
-## 5. Структура директорий проекта
+## 5. Технические детали модулей
 
-```
-pickme_drone/
-│
-├── docker/
-│   ├── base.Dockerfile             # pickme-base (фундамент)
-│   ├── px4-bridge.Dockerfile       # pickme-px4-bridge (связь с PX4)
-│   ├── camera.Dockerfile           # pickme-camera (RealSense)
-│   ├── core.Dockerfile             # pickme-core (commander, SLAM)
-│   ├── dev.Dockerfile              # pickme-dev (песочница)
-│   │
-│   ├── sim.Dockerfile              # PX4 SITL + Gazebo Server (только симуляция)
-│   └── sim-perception.Dockerfile   # ros_gz_bridge (только симуляция)
-│
-├── compose/
-│   └── compose.real.yaml           # Реальный дрон
-│
-├── compose.sim.yaml                # Симуляция (в корне для удобства make sim)
-│
-├── sim/
-│   ├── config/bridge.yaml          # Конфигурация ros_gz_bridge (камера, глубина, облако точек, /clock)
-│   ├── worlds/default.sdf
-│   ├── models/                     # 3D-меши (не в git, копируются из контейнера)
-│   └── run_gui.sh
-│
-├── src/
-│   │
-│   │  # ── Компилируется в pickme-base ──
-│   ├── pickme_interfaces/          # .msg, .srv, .action (ТОЛЬКО определения)
-│   │   └── msg/DroneState.msg
-│   │
-│   │  # ── Компилируется в pickme-core (COPY) ──
-│   ├── pickme_commander/           # PX4 команды: arm, takeoff, land, offboard
-│   │   ├── pickme_commander/
-│   │   │   └── commander_node.py
-│   │   └── launch/
-│   │       └── commander.launch.py
-│   │
-│   │  # ── Монтируется в pickme-dev (volume) ──
-│   ├── pickme_missions/            # Логика миссий (ворота, патрулирование, посадка)
-│   │   ├── pickme_missions/
-│   │   │   └── example_mission.py
-│   │   └── launch/
-│   │       └── example.launch.py
-│   │
-│   └── pickme_bringup/             # Общие launch-файлы и конфиги
-│
-├── Makefile
-├── ARCHITECTURE.md                 # Этот файл
-├── README.md
-└── PROJECT.md
-```
+### 5.1 Почему Setpoint Tracking делается на стороне ROS 2:
+1. **Динамическая скорость под задачу**: PX4 в режиме Offboard принимает либо целевую точку `position` (и летит к ней с глобальной круизной скоростью `MPC_XY_CRUISE`), либо вектор `velocity` (и летит бесконечно без точки останова). Чтобы лететь в точку $B$ с конкретной скоростью `speed` (например, 0.3 м/с для съемки или 2.0 м/с для перелета), `TrajectoryTracker` в ROS на частоте 20–50 Гц плавно двигает уставку:
+   $$\Delta \vec{S} = \vec{v}_{\text{target}} \cdot \Delta t$$
+2. **Плавность движения**: Исключаются рывки моторов и запредельные ускорения при больших дистанциях до цели.
+3. **Системы координат**: Автоматический пересчет смещений из системы дрона `body` (например, «1 метр вперед от носа») в мировую систему `odom`/`map`.
 
-**Правило распределения кода по контейнерам:**
-- `pickme_interfaces` → компилируется внутри `pickme-base` (через `COPY` + `colcon build`)
-- `pickme_commander` → компилируется внутри `pickme-core` (через `COPY` + `colcon build`)
-- `pickme_missions` → **НЕ копируется**. Монтируется в `pickme-dev` через `volumes`. Компилируется вручную внутри контейнера
+### 5.2 Почему Offboard организован как единая нода с внутренними C++ классами:
+- **Отсутствие задержек и рассинхрона**: Heartbeat (10 Гц) и уставки Trajectory (20–50 Гц) должны синхронно передаваться в PX4. Разделение их на разные ROS-процессы создает риск ситуации, когда пульс уже идет, а уставка еще застряла в межпроцессном буфере DDS.
+- **Zero-Copy и надежность**: `SafetyGuard` и `TrajectoryTracker` вызываются мгновенно без создания промежуточных топиков.
+
+### 5.3 Изоляция Foxglove Bridge:
+- Запускается в отдельном легковесном контейнере `pickme-foxglove` при старте `make sim`.
+- Если веб-интерфейс визуализации упадет, переполнит вебсокет или закроется браузер — полетный контур `pickme-core` продолжает штатно выполнять миссию.
 
 ---
 
-## 6. Рабочий процесс разработчика
+## 6. Рабочий процесс в симуляции
 
-### Добавление новой apt/pip зависимости
+```bash
+# 1. Собрать образы
+make build
 
-```
-1. Открой docker/dev.Dockerfile
-2. Допиши в QUICK-ADD SECTION:
-     RUN apt-get update && apt-get install -y ros-humble-foxglove-bridge
-3. На плате выполни:
-     docker compose -f compose/compose.real.yaml build dev
-     docker compose -f compose/compose.real.yaml up -d dev
-4. Готово. Foxglove установлен навсегда, зафиксирован в Git.
-```
+# 2. Запустить весь симуляционный стек (PX4 SITL + Gazebo + Core + Foxglove)
+make sim
 
-### Добавление новой миссии
+# 3. Запустить 3D GUI Gazebo на хосте macOS
+make gui
 
-```
-1. Создай файл src/pickme_missions/pickme_missions/new_mission.py
-2. Создай launch-файл src/pickme_missions/launch/new_mission.launch.py
-3. Зайди в dev-контейнер: docker exec -it pickme-dev bash
-4. Собери: colcon build --packages-select pickme_missions
-5. Запусти: ros2 launch pickme_missions new_mission.launch.py
-```
+# 4. Открыть Foxglove Studio на хосте (ws://localhost:8765)
 
-### Добавление нового сенсора (например LiDAR)
-
-```
-1. Создай docker/lidar.Dockerfile (FROM pickme-base + SDK лидара)
-2. В compose.real.yaml добавь сервис:
-     lidar:
-       image: pickme-lidar:latest
-       devices: ["/dev/ttyUSB0:/dev/ttyUSB0"]
-       network_mode: host
-3. Лидар публикует /scan — твой код в dev подписывается на /scan
-4. Существующие контейнеры не меняются
-```
-
-### Смена вычислительной платы
-
-```
-1. Отредактируй docker/base.Dockerfile под новую архитектуру
-2. В compose/.env поправь пути к устройствам если изменились
-3. Пересобери: docker compose build
-4. Код в src/ не трогаешь
+# 5. Войти в dev-контейнер для запуска миссий
+make shell-dev
 ```

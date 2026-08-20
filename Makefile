@@ -1,7 +1,6 @@
 .PHONY: sim gui down build build-base logs shell-dev shell-sim shell-core help
 
 COMPOSE_SIM  = compose/compose.sim.yaml
-COMPOSE_REAL = compose/compose.real.yaml
 
 help:
 	@echo "=== PickmeDrone Commands ==="
@@ -18,10 +17,6 @@ help:
 	@echo "    make shell-dev  - Open bash in dev container"
 	@echo "    make shell-sim  - Open bash in sim container"
 	@echo "    make shell-core - Open bash in core container"
-	@echo ""
-	@echo "  Real Drone (on board):"
-	@echo "    make real       - Start all real drone containers"
-	@echo "    make real-down  - Stop real drone containers"
 
 # ── Base Image ──
 build-base:
@@ -56,14 +51,7 @@ shell-sim:
 	docker compose -f $(COMPOSE_SIM) exec sim bash
 
 shell-core:
-	docker compose -f $(COMPOSE_SIM) exec core bash
+	docker compose -f $(COMPOSE_SIM) exec pickme-core bash
 
 shell-px4:
 	docker attach pickme-sim
-
-# ── Real Drone ──
-real: build-base
-	docker compose -f $(COMPOSE_REAL) up -d
-
-real-down:
-	docker compose -f $(COMPOSE_REAL) down
