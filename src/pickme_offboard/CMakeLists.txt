@@ -17,10 +17,17 @@ find_package(px4_msgs REQUIRED)
 find_package(pickme_interfaces REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 include_directories(include)
 
-add_executable(offboard_node src/offboard_node.cpp)
+add_executable(offboard_node
+  src/heartbeat_manager.cpp
+  src/command_sender.cpp
+  src/safety_guard.cpp
+  src/trajectory_tracker.cpp
+  src/offboard_node.cpp
+)
 ament_target_dependencies(offboard_node
   rclcpp
   std_srvs
@@ -30,6 +37,7 @@ ament_target_dependencies(offboard_node
   pickme_interfaces
   tf2
   tf2_ros
+  tf2_geometry_msgs
 )
 
 install(TARGETS

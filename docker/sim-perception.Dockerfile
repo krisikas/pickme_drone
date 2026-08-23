@@ -50,4 +50,6 @@ CMD ["/bin/bash", "-c", \
        -r /camera/camera_info:=/camera/color/camera_info \
        -r /depth_camera:=/camera/depth/image_rect_raw \
        -r /depth_camera/camera_info:=/camera/depth/camera_info \
-       -r /depth_camera/points:=/camera/depth/color/points"]
+       -r /depth_camera/points:=/camera/depth/color/points \
+       -p camera.frame_id:=camera_color_frame \
+       -p depth_camera.frame_id:=camera_depth_frame"]

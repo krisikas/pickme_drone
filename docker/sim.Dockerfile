@@ -55,9 +55,10 @@ WORKDIR /home/$USERNAME
 # 5. Clone and compile PX4-Autopilot.
 #    'make px4_sitl' compiles only, does NOT launch the simulator.
 #    The gz model is specified at runtime in the entrypoint.
-RUN git clone -b release/1.15 https://github.com/PX4/PX4-Autopilot.git --recursive && \
+RUN git clone -b release/1.16 https://github.com/PX4/PX4-Autopilot.git --recursive && \
     cd PX4-Autopilot && \
-    git checkout v1.15.4 && \
+    git checkout v1.16.2 && \
+    sed -i 's/ GZ_IP=127.0.0.1//g' src/modules/simulation/gz_bridge/CMakeLists.txt && \
     git submodule update --init --recursive && \
     make px4_sitl
 

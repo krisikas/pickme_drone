@@ -11,6 +11,7 @@ OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
   // === Parameter Declarations ===
   odom_frame_ = this->declare_parameter<std::string>("odom_frame", "odom");
   base_frame_ = this->declare_parameter<std::string>("base_frame", "base_link");
+  body_frame_ = this->declare_parameter<std::string>("body_frame", "body");
   camera_frame_ = this->declare_parameter<std::string>("camera_frame", "camera_link");
   camera_depth_frame_ = this->declare_parameter<std::string>("camera_depth_frame", "camera_depth_frame");
   camera_depth_optical_frame_ = this->declare_parameter<std::string>("camera_depth_optical_frame", "camera_depth_optical_frame");
@@ -159,20 +160,32 @@ void OdometryNode::handle_vehicle_odometry(const px4_msgs::msg::VehicleOdometry:
     x_ros = y_ros = z_ros = 0.0;
   }
 
-  // 3. Broadcast Dynamic TF (odom -> base_link)
-  geometry_msgs::msg::TransformStamped t;
-  t.header.stamp = now;
-  t.header.frame_id = odom_frame_;
-  t.child_frame_id = base_frame_;
-  t.transform.translation.x = pos_x;
-  t.transform.translation.y = pos_y;
-  t.transform.translation.z = pos_z;
-  t.transform.rotation.x = x_ros;
-  t.transform.rotation.y = y_ros;
-  t.transform.rotation.z = z_ros;
-  t.transform.rotation.w = w_ros;
+  // 3. Broadcast Dynamic TF (odom -> base_link and odom -> body)
+  geometry_msgs::msg::TransformStamped t_base;
+  t_base.header.stamp = now;
+  t_base.header.frame_id = odom_frame_;
+  t_base.child_frame_id = base_frame_;
+  t_base.transform.translation.x = pos_x;
+  t_base.transform.translation.y = pos_y;
+  t_base.transform.translation.z = pos_z;
+  t_base.transform.rotation.x = x_ros;
+  t_base.transform.rotation.y = y_ros;
+  t_base.transform.rotation.z = z_ros;
+  t_base.transform.rotation.w = w_ros;
 
-  tf_broadcaster_->sendTransform(t);
+  // Extract horizontal yaw for body frame (roll=0, pitch=0)
+  double yaw = std::atan2(2.0 * (w_ros * z_ros + x_ros * y_ros), 1.0 - 2.0 * (y_ros * y_ros + z_ros * z_ros));
+  geometry_msgs::msg::TransformStamped t_body;
+  t_body.header.stamp = now;
+  t_body.header.frame_id = odom_frame_;
+  t_body.child_frame_id = body_frame_;
+  t_body.transform.translation.x = pos_x;
+  t_body.transform.translation.y = pos_y;
+  t_body.transform.translation.z = pos_z;
+  t_body.transform.rotation = euler_to_quaternion(0.0, 0.0, yaw);
+
+  tf_broadcaster_->sendTransform(t_base);
+  tf_broadcaster_->sendTransform(t_body);
 
   // 4. Publish Standard ROS 2 Odometry Message
   if (odom_pub_) {

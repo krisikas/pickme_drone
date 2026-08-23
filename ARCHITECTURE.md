@@ -76,9 +76,7 @@
 
 ```text
 src/
-├── pickme_interfaces/       # [Типы данных] ТОЛЬКО .msg, .srv, .action
-│   ├── msg/
-│   │   └── DroneState.msg   # Агрегированный статус дрона (armed, mode, battery, odom, flight_state)
+├── pickme_interfaces/       # [Типы данных] ТОЛЬКО .srv, .action
 │   ├── srv/
 │   │   ├── Navigate.srv     # x, y, z, yaw, speed, frame_id, auto_arm -> success, message
 │   │   ├── SetAltitude.srv  # z, frame_id -> success, message
@@ -91,20 +89,23 @@ src/
 │   ├── include/pickme_odometry/
 │   │   └── odometry_node.hpp
 │   ├── src/
-│   │   └── odometry_node.cpp # PX4 NED -> ROS ENU, динамический TF (odom->base_link), статический TF камеры, /odom
+│   │   └── odometry_node.cpp # PX4 NED -> ROS ENU, динамический TF (odom->base_link, odom->body), статический TF камеры, /odom
 │   └── launch/
 │       └── odometry.launch.py
 │
 ├── pickme_offboard/         # [Исполнительный полетный контур]
 │   ├── include/pickme_offboard/
 │   │   ├── heartbeat_manager.hpp # 10Hz Heartbeat (/fmu/in/offboard_control_mode)
-│   │   ├── trajectory_tracker.hpp # 20-50Hz плавная интерполяция к цели (speed * dt)
-│   │   └── safety_guard.hpp       # Проверка NaN/Inf, Geofence, watchdog одометрии
+│   │   ├── command_sender.hpp    # Отправка VehicleCommand, проверка VehicleCommandAck и VehicleStatus
+│   │   ├── trajectory_tracker.hpp # 50Hz плавная интерполяция к цели (speed * dt) + TF navigate_target
+│   │   ├── safety_guard.hpp       # Проверка NaN/Inf, Geofence, watchdog одометрии
+│   │   └── offboard_node.hpp      # Оркестратор: универсальные TF2 трансформации и сервисы полета
 │   ├── src/
-│   │   ├── offboard_node.cpp      # Основной координатор и сервисы /arm, /takeoff, /land, /navigate
 │   │   ├── heartbeat_manager.cpp
+│   │   ├── command_sender.cpp
 │   │   ├── trajectory_tracker.cpp
-│   │   └── safety_guard.cpp
+│   │   ├── safety_guard.cpp
+│   │   └── offboard_node.cpp
 │   └── launch/
 │       └── offboard.launch.py
 │

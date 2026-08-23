@@ -45,13 +45,13 @@ gz-topics:
 
 # ── Shells ──
 shell-dev:
-	docker compose -f $(COMPOSE_SIM) exec pickme-dev bash
+	docker compose -f $(COMPOSE_SIM) exec dev bash
 
 shell-sim:
 	docker compose -f $(COMPOSE_SIM) exec sim bash
 
 shell-core:
-	docker compose -f $(COMPOSE_SIM) exec pickme-core bash
+	docker compose -f $(COMPOSE_SIM) exec core bash
 
 shell-px4:
 	docker attach pickme-sim

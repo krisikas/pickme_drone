@@ -12,7 +12,6 @@ USER root
 
 # ── System / ROS dependencies for core services ──
 RUN apt-get update && apt-get install -y \
-    ros-humble-foxglove-bridge \
     ros-humble-tf2-ros \
     ros-humble-tf2-geometry-msgs \
     && rm -rf /var/lib/apt/lists/*

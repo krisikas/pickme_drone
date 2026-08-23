@@ -48,6 +48,7 @@ private:
   // === Frame & Parameter Members ===
   std::string odom_frame_;
   std::string base_frame_;
+  std::string body_frame_;
   std::string camera_frame_;
   std::string camera_depth_frame_;
   std::string camera_depth_optical_frame_;
