@@ -1,30 +1,29 @@
 /**
- * OffboardNode — Centralized flight control coordinator and trajectory tracking engine.
+ * OffboardNode — Centralized flight coordinator and ROS 2 service provider.
  *
- * Implements PX4 Offboard communication protocol over Micro-XRCE-DDS:
- * - 10 Hz Heartbeat: OffboardControlMode
- * - 20-50 Hz Setpoint Tracker: TrajectorySetpoint with speed interpolation
- * - Safety Guard: NaN/Inf checks, Geofence, Odometry watchdog
- * - High-level flight services: /arm, /disarm, /takeoff, /land, /navigate, /set_altitude, /set_yaw, /get_telemetry
+ * Coordinates:
+ * - HeartbeatManager (10 Hz heartbeat)
+ * - CommandSender (VehicleCommand dispatch & VehicleCommandAck feedback)
+ * - SafetyGuard (Geofence, NaN check, odometry watchdog)
+ * - TrajectoryTracker (50 Hz setpoint tracking & navigate_target TF)
+ * - TF2 Frame Resolution (Universal frame_id support: odom, map, body, base_link, navigate_target, camera_link, etc.)
  */
 
 #pragma once
 
-#include <chrono>
-#include <cmath>
 #include <memory>
 #include <string>
-#include <atomic>
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_srvs/srv/trigger.hpp>
-#include <geometry_msgs/msg/point.hpp>
-#include <nav_msgs/msg/odometry.hpp>
-#include <px4_msgs/msg/offboard_control_mode.hpp>
-#include <px4_msgs/msg/trajectory_setpoint.hpp>
-#include <px4_msgs/msg/vehicle_command.hpp>
-#include <px4_msgs/msg/vehicle_status.hpp>
 #include <px4_msgs/msg/vehicle_odometry.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
+#include "pickme_offboard/heartbeat_manager.hpp"
+#include "pickme_offboard/command_sender.hpp"
+#include "pickme_offboard/safety_guard.hpp"
+#include "pickme_offboard/trajectory_tracker.hpp"
 
 #include <pickme_interfaces/srv/navigate.hpp>
 #include <pickme_interfaces/srv/set_altitude.hpp>
@@ -33,23 +32,13 @@
 
 namespace pickme_offboard {
 
-constexpr double PI = 3.14159265358979323846;
-
 enum class FlightState {
   DISARMED,
-  ARMED,
-  TAKING_OFF,
-  HOVERING,
+  ARMING,
+  OFFBOARD_ENGAGED,
   NAVIGATING,
-  LANDING,
-  LANDED
-};
-
-struct Position3D {
-  double x{0.0};
-  double y{0.0};
-  double z{0.0};
-  double yaw{0.0};
+  HOVERING,
+  LANDING
 };
 
 class OffboardNode : public rclcpp::Node {
@@ -57,18 +46,20 @@ public:
   explicit OffboardNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
 private:
-  // === Flight Control Timers ===
-  void publish_heartbeat();
-  void update_setpoint_tracking();
+  // === Odometry Subscriber ===
+  void handle_odometry(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
 
-  // === PX4 Command Helpers ===
-  void publish_vehicle_command(
-    uint32_t command,
-    float param1 = 0.0f, float param2 = 0.0f, float param3 = 0.0f,
-    float param4 = 0.0f, float param5 = 0.0f, float param6 = 0.0f,
-    float param7 = 0.0f);
+  // === Control Loop ===
+  void control_loop();
 
-  // === Service Callbacks ===
+  // === Universal TF2 Frame Transformer ===
+  bool resolve_target_to_odom(
+    const std::string & frame_id,
+    double req_x, double req_y, double req_z, double req_yaw,
+    double & out_x, double & out_y, double & out_z, double & out_yaw,
+    std::string & err_msg);
+
+  // === Service Handlers ===
   void handle_arm(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
@@ -101,10 +92,10 @@ private:
     const std::shared_ptr<pickme_interfaces::srv::GetTelemetry::Request> request,
     std::shared_ptr<pickme_interfaces::srv::GetTelemetry::Response> response);
 
-  // === Safety & Validation ===
-  bool validate_position_safety(double x, double y, double z, double yaw, double speed, std::string & error_msg);
-
   // === Parameters ===
+  std::string odom_frame_;
+  std::string base_frame_;
+  std::string target_frame_;
   double default_speed_;
   double takeoff_altitude_;
   double geofence_radius_;
@@ -113,27 +104,26 @@ private:
   double odom_timeout_sec_;
   double target_reached_threshold_;
 
+  // === Modular Components ===
+  std::unique_ptr<HeartbeatManager> heartbeat_mgr_;
+  std::unique_ptr<CommandSender> cmd_sender_;
+  std::unique_ptr<SafetyGuard> safety_guard_;
+  std::unique_ptr<TrajectoryTracker> trajectory_tracker_;
+
+  // === TF2 Listener ===
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
   // === State Variables ===
   FlightState flight_state_{FlightState::DISARMED};
-  Position3D current_pos_{};
-  Position3D current_vel_{};
-  Position3D current_setpoint_{};
-  Position3D target_setpoint_{};
-  double current_target_speed_{1.0};
-  bool offboard_engaged_{false};
+  Waypoint3D current_pos_{};
+  Waypoint3D current_vel_{};
   rclcpp::Time last_odom_time_{0, 0, RCL_ROS_TIME};
 
-  // === Subscriptions ===
-  rclcpp::Subscription<px4_msgs::msg::VehicleStatus>::SharedPtr status_sub_;
+  // === ROS Entities ===
   rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
-  px4_msgs::msg::VehicleStatus::SharedPtr vehicle_status_;
+  rclcpp::TimerBase::SharedPtr control_timer_;
 
-  // === Publishers ===
-  rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
-  rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr trajectory_pub_;
-  rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr vehicle_command_pub_;
-
-  // === Services ===
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr arm_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disarm_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr takeoff_service_;
@@ -142,10 +132,6 @@ private:
   rclcpp::Service<pickme_interfaces::srv::SetAltitude>::SharedPtr set_altitude_service_;
   rclcpp::Service<pickme_interfaces::srv::SetYaw>::SharedPtr set_yaw_service_;
   rclcpp::Service<pickme_interfaces::srv::GetTelemetry>::SharedPtr telemetry_service_;
-
-  // === Timers ===
-  rclcpp::TimerBase::SharedPtr heartbeat_timer_;
-  rclcpp::TimerBase::SharedPtr control_timer_;
 };
 
 }  // namespace pickme_offboard

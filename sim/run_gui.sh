@@ -52,7 +52,7 @@ echo "[INFO] GZ_IP (Mac host): $HOST_FACING_IP"
 export GZ_PARTITION=sim
 export GZ_RELAY="$PX4_IP"
 export GZ_IP="$HOST_FACING_IP"
-export GZ_SIM_RESOURCE_PATH="$MODELS_DIR"
+export GZ_SIM_RESOURCE_PATH="$MODELS_DIR:$SCRIPT_DIR/worlds"
 
 echo "[INFO] Launching gz sim -g -v 4..."
 exec gz sim -g -v 4 "$@"
