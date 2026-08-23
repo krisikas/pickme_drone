@@ -110,8 +110,9 @@ odom (ENU: World-fixed continuous odometry)
 ### Dual-Mode TF Strategy (Simulation ↔ Real Drone)
 - **Simulation (`publish_camera_tf: true`, default)**:
   `transform_node` (in `pickme_core`) publishes the complete camera TF tree because Gazebo has no physical EEPROM calibration chip.
+  *Note on Gazebo DepthCamera*: Gazebo Harmonic's `gz-sensors` generates 3D point cloud coordinates natively in the FLU robot body frame ($+X$ forward, $+Y$ left, $+Z$ up). Therefore, the simulated point cloud topic `/camera/depth/color/points` attaches directly to `camera_depth_frame` (FLU) in simulation to avoid double-rotating the points.
 - **Real Drone (`publish_camera_tf: false`)**:
-  `transform_node` publishes only `odom -> base_link` and `base_link -> camera_link`. The internal camera frames (`camera_link -> ... -> optical_frames`) are broadcast directly by the official `realsense2_camera` driver with factory EEPROM calibrations.
+  `transform_node` publishes only `odom -> base_link` and `base_link -> camera_link`. The internal camera frames (`camera_link -> ... -> optical_frames`) are broadcast directly by the official `realsense2_camera` driver with factory EEPROM calibrations (which generates point clouds in RDF `camera_depth_optical_frame`).
 
 ---
 
