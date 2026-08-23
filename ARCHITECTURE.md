@@ -25,16 +25,16 @@
   │              │  (ТОЛЬКО интерфейсы и общие системные библиотеки)
   └──────┬───────┘
          │
-         ├────────────────────────────────────┬────────────────────────┐
-         │  FROM pickme-base                  │  FROM pickme-base      │  FROM pickme-base
-         ▼                                    ▼                        ▼
-  ┌──────────────┐                     ┌──────────────┐         ┌──────────────┐
-  │ pickme-core  │                     │  pickme-dev  │         │pickme-       │
-  │              │                     │              │         │ foxglove     │
-  │ Полетный     │                     │  Песочница   │         │ (Автостарт UI│
-  │ контур:      │                     │  разработчика│         │  веб-панели  │
-  │ offboard,    │                     │  (gdb, rqt,  │         │  порт 8765)  │
-  │ odometry     │                     │   missions)  │         └──────────────┘
+         ├────────────────────────────────────┬────────────────────────┬────────────────────────┐
+         │  FROM pickme-base                  │  FROM pickme-base      │  FROM pickme-base      │  FROM pickme-base
+         ▼                                    ▼                        ▼                        ▼
+  ┌──────────────┐                     ┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+  │ pickme-core  │                     │  pickme-dev  │         │pickme-       │         │pickme-       │
+  │              │                     │              │         │ foxglove     │         │ perception   │
+  │ Полетный     │                     │  Песочница   │         │ (Автостарт UI│         │ RTAB-Map VO  │
+  │ контур:      │                     │  разработчика│         │  веб-панели  │         │ и 3D SLAM    │
+  │ offboard,    │                     │  (gdb, rqt,  │         │  порт 8765)  │         │              │
+  │ odometry     │                     │   missions)  │         └──────────────┘         └──────────────┘
   └──────────────┘                     └──────────────┘
 
   ┌──────────────┐                     ┌────────────────────────┐
@@ -59,14 +59,18 @@
 - **`pickme-sim-perception`**: `ros_gz_bridge` — маппит топики симуляции в стандартные ROS 2 топики сенсоров (`/camera/color/*`, `/camera/depth/*`, `/camera/depth/color/points`, `/clock`).
 
 ### 3.3 `pickme-core`
-- **Содержимое**: Стабильный полетный базис — `pickme_offboard` и `pickme_odometry`, запускаемые через `pickme_bringup/launch/core.launch.py`.
+- **Содержимое**: Стабильный полетный базис — `pickme_offboard` и `pickme_odometry` (включая мост Visual Odometry $\to$ PX4 EKF2 и публикацию TF `odom -> base_link`), запускаемые через `pickme_bringup/launch/core.launch.py`.
 - **Правило**: Работает непрерывно в фоне. Защищен от внешних падений.
 
-### 3.4 `pickme-foxglove`
+### 3.4 `pickme-perception`
+- **Содержимое**: RTAB-Map Visual Odometry (`rgbd_odometry`) и 3D SLAM (`rtabmap`), запускаемые через `pickme_bringup/launch/perception.launch.py`.
+- **Правило**: Изолирован от полетного контура. Публикует `/visual_odometry`, опционально строит карту занятости и облака точек.
+
+### 3.5 `pickme-foxglove`
 - **Содержимое**: Сервер `foxglove_bridge` (порт 8765).
 - **Правило**: Автоматически стартует в `compose.sim.yaml` для мгновенной отладки в Foxglove Studio, но полностью изолирован от полетного ядра `core`.
 
-### 3.5 `pickme-dev`
+### 3.6 `pickme-dev`
 - **Содержимое**: Инструменты разработчика (`gdb`, `rqt`, `tmux`, `teleop`).
 - **Правило**: Директория `workspace/` или `src/` монтируется через Docker Volume. Разработчик пишет миссии и тестирует код на лету.
 
