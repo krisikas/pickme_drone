@@ -28,6 +28,9 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 
+# Copy default bridge configuration
+COPY sim/config/bridge.yaml /etc/pickme/bridge.yaml
+
 USER $USERNAME
 WORKDIR /home/$USERNAME
 
@@ -35,21 +38,7 @@ WORKDIR /home/$USERNAME
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 
 # Run the ros_gz bridge for clock and sensor topics (camera, depth camera, pointcloud)
-# Remap to unified topic contract matching RealSense D435
 CMD ["/bin/bash", "-c", \
     "source /opt/ros/humble/setup.bash && \
-     ros2 run ros_gz_bridge parameter_bridge \
-       /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock \
-       /camera@sensor_msgs/msg/Image[gz.msgs.Image \
-       /camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo \
-       /depth_camera@sensor_msgs/msg/Image[gz.msgs.Image \
-       /depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo \
-       /depth_camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked \
-       --ros-args \
-       -r /camera:=/camera/color/image_raw \
-       -r /camera/camera_info:=/camera/color/camera_info \
-       -r /depth_camera:=/camera/depth/image_rect_raw \
-       -r /depth_camera/camera_info:=/camera/depth/camera_info \
-       -r /depth_camera/points:=/camera/depth/color/points \
-       -p camera.frame_id:=camera_color_frame \
-       -p depth_camera.frame_id:=camera_depth_frame"]
+     ros2 run ros_gz_bridge parameter_bridge --ros-args -p config_file:=/etc/pickme/bridge.yaml"]
+

@@ -84,6 +84,7 @@ services:
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../sim/config/bridge.yaml:/etc/pickme/bridge.yaml:ro
     depends_on:
       - core
   core:
