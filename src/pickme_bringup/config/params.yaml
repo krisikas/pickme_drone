@@ -18,6 +18,8 @@ odometry_node:
     publish_camera_tf: true
     publish_odom_topic: true
     odom_topic_name: "/odom"
+    enable_visual_odometry_bridge: true
+    visual_odometry_topic: "/visual_odometry"
 
 offboard_node:
   ros__parameters:

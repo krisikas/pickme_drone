@@ -1,4 +1,4 @@
-.PHONY: sim gui down build build-base logs shell-dev shell-sim shell-core help
+.PHONY: sim gui down build build-base logs shell-dev shell-sim shell-core shell-perception help
 
 COMPOSE_SIM  = compose/compose.sim.yaml
 
@@ -14,9 +14,10 @@ help:
 	@echo "    make logs       - Tail logs from all simulation containers"
 	@echo ""
 	@echo "  Shells:"
-	@echo "    make shell-dev  - Open bash in dev container"
-	@echo "    make shell-sim  - Open bash in sim container"
-	@echo "    make shell-core - Open bash in core container"
+	@echo "    make shell-dev        - Open bash in dev container"
+	@echo "    make shell-sim        - Open bash in sim container"
+	@echo "    make shell-core       - Open bash in core container"
+	@echo "    make shell-perception - Open bash in perception container"
 
 # ── Base Image ──
 build-base:
@@ -52,6 +53,9 @@ shell-sim:
 
 shell-core:
 	docker compose -f $(COMPOSE_SIM) exec core bash
+
+shell-perception:
+	docker compose -f $(COMPOSE_SIM) exec perception bash
 
 shell-px4:
 	docker attach pickme-sim
