@@ -11,15 +11,16 @@ from launch_ros.actions import Node
 def generate_launch_description():
     bringup_dir = get_package_share_directory('pickme_bringup')
     default_params_file = os.path.join(bringup_dir, 'config', 'perception.yaml')
+    default_slam = os.environ.get('SLAM_ENABLE', 'false').lower() in ('true', '1', 'yes')
 
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    slam = LaunchConfiguration('slam')
-    publish_tf = LaunchConfiguration('publish_tf')
-    params_file = LaunchConfiguration('params_file')
-    rgb_topic = LaunchConfiguration('rgb_topic')
-    depth_topic = LaunchConfiguration('depth_topic')
-    camera_info_topic = LaunchConfiguration('camera_info_topic')
-    odom_topic = LaunchConfiguration('odom_topic')
+    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    slam = LaunchConfiguration('slam', default=str(default_slam).lower())
+    publish_tf = LaunchConfiguration('publish_tf', default='false')
+    params_file = LaunchConfiguration('params_file', default=default_params_file)
+    rgb_topic = LaunchConfiguration('rgb_topic', default='/camera/color/image_raw')
+    depth_topic = LaunchConfiguration('depth_topic', default='/camera/depth/image_rect_raw')
+    camera_info_topic = LaunchConfiguration('camera_info_topic', default='/camera/color/camera_info')
+    odom_topic = LaunchConfiguration('odom_topic', default='/visual_odometry')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -29,7 +30,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'slam',
-            default_value='false',
+            default_value=str(default_slam).lower(),
             description='Run full RTAB-Map SLAM if true, otherwise run only Visual Odometry',
         ),
         DeclareLaunchArgument(
@@ -85,7 +86,7 @@ def generate_launch_description():
             ],
         ),
 
-        # 2. RTAB-Map SLAM Node (Optional, triggered by slam:=true)
+        # 2. RTAB-Map SLAM Node (Optional, enabled when slam:=true or SLAM_ENABLE=true)
         Node(
             package='rtabmap_slam',
             executable='rtabmap',
@@ -105,6 +106,6 @@ def generate_launch_description():
                 ('rgb/camera_info', camera_info_topic),
                 ('odom', odom_topic),
             ],
-            arguments=['-d'],  # Delete database on startup for clean session
+            arguments=['-d'],  # Delete database on startup for a clean session
         ),
     ])

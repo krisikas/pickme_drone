@@ -44,14 +44,47 @@ rtabmap:
     subscribe_rgb: true
     subscribe_odom_info: false
     approx_sync: true
-    sync_queue_size: 10
-    topic_queue_size: 10
+    approx_sync_max_interval: 0.10
+    sync_queue_size: 30
+    topic_queue_size: 30
 
-    # Memory & Mapping limits
-    RGBD/LinearUpdate: "0.1"
+    # ── Keypoint & Feature Matching (ORB for Loop Closure) ──
+    # 8=ORB (Required: prevents defaulting to SURF/SIFT which are disabled in stock OpenCV)
+    Kp/DetectorStrategy: "8"
+    Kp/MaxFeatures: "500"
+    Kp/WordsPerImage: "400"
+    Vis/FeatureType: "8"
+    Vis/MaxFeatures: "500"
+    Vis/MinInliers: "10"
+    Vis/CorType: "0"
+
+    # ── Loop Closure & Proximity Detection ──
+    Rtabmap/DetectionRate: "2.0"
+    Rtabmap/TimeThr: "0"
+    RGBD/LoopClosureReextractFeatures: "true"
+    RGBD/ProximityBySpace: "true"
+    RGBD/ProximityByTime: "false"
+    RGBD/ProximityPathMaxNeighbors: "10"
+    RGBD/ProximityMaxGraphDepth: "50"
+    RGBD/NeighborLinkRefining: "true"
+    RGBD/OptimizeFromGraphEnd: "false"
+
+    # ── Memory & Keyframe Updates ──
+    RGBD/LinearUpdate: "0.05"
     RGBD/AngularUpdate: "0.05"
     Mem/IncrementalMemory: "true"
     Mem/InitWMWithAllNodes: "false"
+    Mem/RehearsalSimilarity: "0.6"
+    Mem/STMSize: "30"
+
+    # ── Graph Optimizer (g2o) ──
+    Optimizer/Strategy: "1"
+    Optimizer/Robust: "true"
+
+    # ── 3D Grid & Occupancy ──
     Grid/FromDepth: "true"
     Grid/RayTracing: "true"
     Grid/3D: "true"
+    Grid/NormalsSegmentation: "true"
+    Grid/MaxGroundAngle: "45"
+    Grid/MaxGroundHeight: "0.1"
