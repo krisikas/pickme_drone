@@ -280,12 +280,6 @@ map (Global World Origin — Earth-fixed)
            └── imu_link (Colocated with Flight Controller)
 ```
 
-### Mathematical Coordinate Conversions
-* **Position:** $\begin{bmatrix} x_{\text{enu}} \\ y_{\text{enu}} \\ z_{\text{enu}} \end{bmatrix} = \begin{bmatrix} y_{\text{ned}} \\ x_{\text{ned}} \\ -z_{\text{ned}} \end{bmatrix}$
-* **Orientation (Quaternion):**
-  $$w_{\text{ros}} = \frac{\sqrt{2}}{2}(w_{\text{px4}} + z_{\text{px4}}),\quad x_{\text{ros}} = \frac{\sqrt{2}}{2}(x_{\text{px4}} + y_{\text{px4}})$$
-  $$y_{\text{ros}} = \frac{\sqrt{2}}{2}(x_{\text{px4}} - y_{\text{px4}}),\quad z_{\text{ros}} = \frac{\sqrt{2}}{2}(w_{\text{px4}} - z_{\text{px4}})$$
-
 ---
 
 ## Perception & SLAM Pipeline
