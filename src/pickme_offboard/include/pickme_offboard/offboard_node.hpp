@@ -1,12 +1,13 @@
 /**
- * OffboardNode — Centralized flight coordinator and ROS 2 service provider.
+ * OffboardNode — Centralized flight coordinator, state machine, and ROS 2 service provider.
  *
  * Coordinates:
  * - HeartbeatManager (10 Hz heartbeat)
- * - CommandSender (VehicleCommand dispatch & VehicleCommandAck feedback)
+ * - CommandSender (VehicleCommand dispatch & telemetry feedback)
  * - SafetyGuard (Geofence, NaN check, odometry watchdog)
- * - TrajectoryTracker (50 Hz setpoint tracking & navigate_target TF)
- * - TF2 Frame Resolution (Universal frame_id support: odom, map, body, base_link, navigate_target, camera_link, etc.)
+ * - TrajectoryTracker (50 Hz closed-loop setpoint tracking & navigate_target TF)
+ * - FlightStatus Publisher (20 Hz /pickme/flight_status telemetry stream)
+ * - Universal 3D TF2 Frame Resolution (odom, map, body, base_link, camera_depth_optical_frame)
  */
 
 #pragma once
@@ -25,6 +26,7 @@
 #include "pickme_offboard/safety_guard.hpp"
 #include "pickme_offboard/trajectory_tracker.hpp"
 
+#include <pickme_interfaces/msg/flight_status.hpp>
 #include <pickme_interfaces/srv/navigate.hpp>
 #include <pickme_interfaces/srv/set_altitude.hpp>
 #include <pickme_interfaces/srv/set_yaw.hpp>
@@ -35,10 +37,12 @@ namespace pickme_offboard {
 enum class FlightState {
   DISARMED,
   ARMING,
-  OFFBOARD_ENGAGED,
+  ARMED,
+  TAKEOFF,
   NAVIGATING,
   HOVERING,
-  LANDING
+  LANDING,
+  EMERGENCY
 };
 
 class OffboardNode : public rclcpp::Node {
@@ -49,10 +53,12 @@ private:
   // === Odometry Subscriber ===
   void handle_odometry(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
 
-  // === Control Loop ===
+  // === Control & Status Loops ===
   void control_loop();
+  void status_publish_loop();
+  void update_flight_state();
 
-  // === Universal TF2 Frame Transformer ===
+  // === Universal 3D TF2 Frame Transformer ===
   bool resolve_target_to_odom(
     const std::string & frame_id,
     double req_x, double req_y, double req_z, double req_yaw,
@@ -92,11 +98,15 @@ private:
     const std::shared_ptr<pickme_interfaces::srv::GetTelemetry::Request> request,
     std::shared_ptr<pickme_interfaces::srv::GetTelemetry::Response> response);
 
+  std::string flight_state_to_str(FlightState state) const;
+
   // === Parameters ===
   std::string odom_frame_;
   std::string base_frame_;
   std::string target_frame_;
   double default_speed_;
+  double max_speed_;
+  double max_yaw_rate_;
   double takeoff_altitude_;
   double geofence_radius_;
   double geofence_min_alt_;
@@ -119,10 +129,14 @@ private:
   Waypoint3D current_pos_{};
   Waypoint3D current_vel_{};
   rclcpp::Time last_odom_time_{0, 0, RCL_ROS_TIME};
+  std::string last_error_{""};
 
-  // === ROS Entities ===
+  // === ROS Entities & Callback Groups ===
+  rclcpp::CallbackGroup::SharedPtr service_cb_group_;
   rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
+  rclcpp::Publisher<pickme_interfaces::msg::FlightStatus>::SharedPtr flight_status_pub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
+  rclcpp::TimerBase::SharedPtr status_timer_;
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr arm_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disarm_service_;

@@ -1,5 +1,5 @@
 /**
- * TrajectoryTracker — 50 Hz trajectory interpolation, feed-forward velocity, and navigate_target TF broadcaster.
+ * TrajectoryTracker — 50 Hz closed-loop trajectory interpolation and navigate_target TF broadcaster.
  */
 
 #pragma once
@@ -39,12 +39,20 @@ public:
   void set_target_altitude(double z);
   void set_target_yaw(double yaw);
   void reset_target();
+  void set_streaming_enabled(bool enabled);
 
-  void update_and_publish(double dt, const rclcpp::Time & now);
+  void update_and_publish(
+    double dt,
+    const rclcpp::Time & now,
+    const Waypoint3D & drone_pos,
+    const Waypoint3D & drone_vel);
 
   bool is_target_reached() const;
   bool is_initialized() const;
   bool has_active_target() const;
+  bool is_streaming_enabled() const;
+  double get_remaining_distance() const;
+
   Waypoint3D get_current_setpoint() const;
   Waypoint3D get_target_setpoint() const;
   double get_target_speed() const;
@@ -60,9 +68,11 @@ private:
   Waypoint3D current_setpoint_{};
   Waypoint3D target_setpoint_{};
   double current_target_speed_{1.0};
+  double remaining_distance_{0.0};
   bool target_reached_{true};
   bool initialized_{false};
   bool has_active_target_{false};
+  bool streaming_enabled_{true};
 
   rclcpp::Publisher<px4_msgs::msg::TrajectorySetpoint>::SharedPtr trajectory_pub_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;

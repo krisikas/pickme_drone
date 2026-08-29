@@ -8,10 +8,13 @@ namespace pickme_offboard {
 
 HeartbeatManager::HeartbeatManager(rclcpp::Node * node)
 : node_(node) {
-  offboard_mode_pub_ = node_->create_publisher<px4_msgs::msg::OffboardControlMode>(
-    "/fmu/in/offboard_control_mode", 10);
+  auto px4_qos = rclcpp::QoS(rclcpp::KeepLast(1))
+                   .best_effort()
+                   .transient_local();
 
-  // Default: start heartbeat immediately so PX4 knows Offboard mode is available
+  offboard_mode_pub_ = node_->create_publisher<px4_msgs::msg::OffboardControlMode>(
+    "/fmu/in/offboard_control_mode", px4_qos);
+
   start();
 }
 
@@ -31,11 +34,19 @@ void HeartbeatManager::stop() {
   }
 }
 
+void HeartbeatManager::set_position_control(bool enable) {
+  position_control_enabled_ = enable;
+}
+
+bool HeartbeatManager::is_active() const {
+  return active_;
+}
+
 void HeartbeatManager::send_heartbeat() {
   px4_msgs::msg::OffboardControlMode msg{};
   msg.timestamp = node_->get_clock()->now().nanoseconds() / 1000;
-  msg.position = true;
-  msg.velocity = true;
+  msg.position = position_control_enabled_;
+  msg.velocity = position_control_enabled_;
   msg.acceleration = false;
   msg.attitude = false;
   msg.body_rate = false;

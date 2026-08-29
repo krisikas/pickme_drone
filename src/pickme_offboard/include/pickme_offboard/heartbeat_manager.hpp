@@ -18,12 +18,15 @@ public:
   void start();
   void stop();
   void send_heartbeat();
+  void set_position_control(bool enable);
+  bool is_active() const;
 
 private:
   rclcpp::Node * node_;
   rclcpp::Publisher<px4_msgs::msg::OffboardControlMode>::SharedPtr offboard_mode_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
   bool active_{false};
+  bool position_control_enabled_{true};
 };
 
 }  // namespace pickme_offboard
