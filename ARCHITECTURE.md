@@ -40,7 +40,6 @@ The PickmeDrone system is built around a **Sim-First, Multi-Tier Decoupled Archi
 
 The system leverages Docker layer caching and multi-stage container specialization to separate build dependencies, runtime environments, and compute workloads:
 
-
 ```text
                                 ros:humble (Official Base Image)
                                                 │
@@ -61,6 +60,37 @@ The system leverages Docker layer caching and multi-stage container specializati
   │         pickme-core          │ │      pickme-perception       │ │       pickme-foxglove        │ │          pickme-dev          │
   │ ──────────────────────────── │ │ ──────────────────────────── │ │ ──────────────────────────── │ │ ──────────────────────────── │
   │ • pickme_offboard (50Hz)     │ │ • RTAB-Map RGB-D Odometry    │ │ • foxglove_bridge WebSocket  │ │ • Interactive dev sandbox    │
+  │ • pickme_odometry (TF2/VO)   │ │ • RTAB-Map 3D SLAM / OctoMap │ │ • Port 8765 (UI Telemetry)   │ │ • GDB, RQT, Teleop tools     │
+  │ • pickme_bringup (Core)      │ │ • False loop-closure filter  │ │ • Zero impact on flight core │ │ • Host workspace volume mount│
+  └──────────────────────────────┘ └──────────────────────────────┘ └──────────────────────────────┘ └──────────────────────────────┘
+
+  ┌──────────────────────────────┐ ┌──────────────────────────────┐
+  │         pickme-sim           │ │    pickme-sim-perception     │
+  │ ──────────────────────────── │ │ ──────────────────────────── │
+  │ • Ubuntu 22.04 + gz-harmonic │ │ • ros_gz_bridge              │
+  │ • PX4 SITL v1.15.4 (Headless)│ │ • Parameter bridge (YAML)    │
+  │ • Micro-XRCE-DDS Agent (8888)│ │ • Converts Gazebo RGB/Depth  │
+  │ • MAVLink Router (TCP 5760)  │ │   and PointCloud to ROS 2    │
+  └──────────────────────────────┘ └──────────────────────────────┘
+```
+
+### Container Responsibility Matrix
+
+| Container | Purpose | Key Daemons & Nodes | Exposed Ports / Mounts |
+|---|---|---|---|
+| **`pickme-base`** | Common base image | System libraries, compiled message definitions | None (Intermediate build layer) |
+| **`pickme-sim`** | Physics & Autopilot Backend | `gz sim -s -r`, `px4`, `MicroXRCEAgent -p 8888`, `mavlink-routerd` | `5760/tcp` (MAVLink QGC), FastDDS XML, World/Model mounts |
+| **`pickme-sim-perception`** | Simulation Sensor Bridge | `ros_gz_bridge parameter_bridge` | `bridge.yaml` config mount |
+| **`pickme-core`** | Mission-Critical Flight Control | `odometry_node`, `offboard_node` | FastDDS XML, shared ROS domain (`ROS_DOMAIN_ID=0`) |
+| **`pickme-perception`** | GPS-Denied Localization & Mapping | `rgbd_odometry`, `rtabmap` SLAM | FastDDS XML |
+| **`pickme-foxglove`** | Web Dashboard Bridge | `foxglove_bridge` WebSocket daemon | `8765/tcp` (WebSocket streaming) |
+| **`pickme-dev`** | User Code Execution Sandbox | Developer shell, Python SDK, testing tools | `../workspace` $\to$ `/home/developer/workspace` |
+
+### Detailed Container Specifications
+* **`pickme-core`**: Stable flight core — `pickme_offboard` (state machine, heartbeat, 50Hz setpoints, 20Hz `/pickme/flight_status`) and `pickme_odometry` (PX4 transforms + Visual Odometry $\to$ PX4 EKF2 bridge), launched via `pickme_bringup/launch/core.launch.py`. Runs continuously in background.
+* **`pickme-perception`**: RTAB-Map Visual Odometry (`rgbd_odometry`) and 3D SLAM (`rtabmap`), launched via `pickme_bringup/launch/perception.launch.py`. Isolated from the flight core. Publishes `/visual_odometry` and constructs 3D occupancy maps.
+* **`pickme-foxglove`**: `foxglove_bridge` server on port 8765 for real-time dashboard visualization.
+* **`pickme-dev`**: Interactive developer container with GDB, RQT, and workspace mounted from host for mission development.active dev sandbox    │
   │ • pickme_odometry (TF2 Broad)│ │ • RTAB-Map 3D SLAM / OctoMap │ │ • Port 8765 (UI Telemetry)   │ │ • GDB, RQT, Teleop tools     │
   │ • pickme_bringup (Core)      │ │ • False loop-closure filter  │ │ • Zero impact on flight core │ │ • Host workspace volume mount│
   └──────────────────────────────┘ └──────────────────────────────┘ └──────────────────────────────┘ └──────────────────────────────┘
@@ -86,6 +116,23 @@ The system leverages Docker layer caching and multi-stage container specializati
 | **`pickme-perception`** | GPS-Denied Localization & Mapping | `rgbd_odometry`, `rtabmap` SLAM | FastDDS XML |
 | **`pickme-foxglove`** | Web Dashboard Bridge | `foxglove_bridge` WebSocket daemon | `8765/tcp` (WebSocket streaming) |
 | **`pickme-dev`** | User Code Execution Sandbox | Developer shell, Python SDK, testing tools | `../workspace` $\to$ `/home/developer/workspace` |
+=======
+### 3.3 `pickme-core`
+- **Содержимое**: Стабильный полетный базис — `pickme_offboard` и `pickme_odometry` (включая мост Visual Odometry $\to$ PX4 EKF2 и публикацию TF `odom -> base_link`), запускаемые через `pickme_bringup/launch/core.launch.py`.
+- **Правило**: Работает непрерывно в фоне. Защищен от внешних падений.
+
+### 3.4 `pickme-perception`
+- **Содержимое**: RTAB-Map Visual Odometry (`rgbd_odometry`) и 3D SLAM (`rtabmap`), запускаемые через `pickme_bringup/launch/perception.launch.py`.
+- **Правило**: Изолирован от полетного контура. Публикует `/visual_odometry`, опционально строит карту занятости и облака точек.
+
+### 3.5 `pickme-foxglove`
+- **Содержимое**: Сервер `foxglove_bridge` (порт 8765).
+- **Правило**: Автоматически стартует в `compose.sim.yaml` для мгновенной отладки в Foxglove Studio, но полностью изолирован от полетного ядра `core`.
+
+### 3.6 `pickme-dev`
+- **Содержимое**: Инструменты разработчика (`gdb`, `rqt`, `tmux`, `teleop`).
+- **Правило**: Директория `workspace/` или `src/` монтируется через Docker Volume. Разработчик пишет миссии и тестирует код на лету.
+>>>>>>> rtab_map
 
 ---
 

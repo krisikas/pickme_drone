@@ -44,7 +44,9 @@ services:
       - PX4_PARAM_SYS_HAS_BARO=1
       - PX4_PARAM_EKF2_BARO_CTRL=1 
 
-      # 4. НАСТРОЙКА ОПТИЧЕСКОГО ПОТОКА И ЛИДАРА
+      # 4. НАСТРОЙКА ВИЗУАЛЬНОЙ ОДОМЕТРИИ (EV), ОПТИЧЕСКОГО ПОТОКА И ЛИДАРА
+      - PX4_PARAM_EKF2_EV_CTRL=15
+      - PX4_PARAM_EKF2_EV_DELAY=0
       - PX4_PARAM_EKF2_OF_CTRL=1
       - PX4_PARAM_SENS_FLOW_ROT=0
       - PX4_PARAM_EKF2_OF_QMIN=1
@@ -103,6 +105,24 @@ services:
     depends_on:
       - sim
 
+  perception:
+    container_name: pickme-perception
+    ipc: host
+    build:
+      context: ..
+      dockerfile: docker/perception.Dockerfile
+    networks:
+      - ros_net
+    environment:
+      - ROS_DOMAIN_ID=0
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - SLAM_ENABLE=true
+    volumes:
+      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+    depends_on:
+      - core
+      - sim-perception
+
   foxglove:
     container_name: pickme-foxglove
     ipc: host
@@ -118,7 +138,6 @@ services:
       - "8765:8765"
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
-    command: ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch pickme_bringup foxglove.launch.py"]
     depends_on:
       - core
 
