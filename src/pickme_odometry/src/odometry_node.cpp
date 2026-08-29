@@ -30,6 +30,8 @@ OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
   publish_camera_tf_ = this->declare_parameter<bool>("publish_camera_tf", true);
   publish_odom_ = this->declare_parameter<bool>("publish_odom_topic", true);
   odom_topic_ = this->declare_parameter<std::string>("odom_topic_name", "/odom");
+  enable_vo_bridge_ = this->declare_parameter<bool>("enable_visual_odometry_bridge", true);
+  vo_topic_ = this->declare_parameter<std::string>("visual_odometry_topic", "/visual_odometry");
 
   // === Broadcasters & Publishers ===
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
@@ -39,7 +41,7 @@ OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
     odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(odom_topic_, 10);
   }
 
-  // === PX4 Subscription ===
+  // === PX4 Subscription & Publishers ===
   auto px4_qos = rclcpp::QoS(rclcpp::KeepLast(1))
                    .best_effort()
                    .transient_local();
@@ -47,6 +49,20 @@ OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
   odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
     "/fmu/out/vehicle_odometry", px4_qos,
     std::bind(&OdometryNode::handle_vehicle_odometry, this, std::placeholders::_1));
+
+  if (enable_vo_bridge_) {
+    vo_px4_pub_ = this->create_publisher<px4_msgs::msg::VehicleOdometry>(
+      "/fmu/in/vehicle_visual_odometry", px4_qos);
+
+    vo_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+      vo_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&OdometryNode::handle_visual_odometry, this, std::placeholders::_1));
+
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Visual Odometry Bridge active: '%s' -> '/fmu/in/vehicle_visual_odometry'",
+      vo_topic_.c_str());
+  }
 
   // === Publish Initial Static Tree ===
   publish_static_transforms();
@@ -214,6 +230,88 @@ void OdometryNode::handle_vehicle_odometry(const px4_msgs::msg::VehicleOdometry:
 
     odom_pub_->publish(odom_msg);
   }
+}
+
+void OdometryNode::handle_visual_odometry(const nav_msgs::msg::Odometry::SharedPtr msg) {
+  if (!vo_px4_pub_) {
+    return;
+  }
+
+  // 1. Position conversion (ROS ENU -> PX4 NED)
+  const float pos_x_ned = static_cast<float>(msg->pose.pose.position.y);
+  const float pos_y_ned = static_cast<float>(msg->pose.pose.position.x);
+  const float pos_z_ned = -static_cast<float>(msg->pose.pose.position.z);
+
+  // 2. Orientation conversion (ROS ENU/FLU -> PX4 NED/FRD)
+  const double w_r = msg->pose.pose.orientation.w;
+  const double x_r = msg->pose.pose.orientation.x;
+  const double y_r = msg->pose.pose.orientation.y;
+  const double z_r = msg->pose.pose.orientation.z;
+
+  float w_px4 = static_cast<float>(SQRT2_2 * (w_r + z_r));
+  float x_px4 = static_cast<float>(SQRT2_2 * (x_r + y_r));
+  float y_px4 = static_cast<float>(SQRT2_2 * (x_r - y_r));
+  float z_px4 = static_cast<float>(SQRT2_2 * (w_r - z_r));
+
+  const float norm = std::sqrt(w_px4 * w_px4 + x_px4 * x_px4 + y_px4 * y_px4 + z_px4 * z_px4);
+  if (norm > 1e-6f) {
+    const float inv_norm = 1.0f / norm;
+    w_px4 *= inv_norm;
+    x_px4 *= inv_norm;
+    y_px4 *= inv_norm;
+    z_px4 *= inv_norm;
+  } else {
+    w_px4 = 1.0f;
+    x_px4 = y_px4 = z_px4 = 0.0f;
+  }
+
+  // 3. Velocity conversion (FLU -> FRD)
+  const float v_x_frd = static_cast<float>(msg->twist.twist.linear.x);
+  const float v_y_frd = -static_cast<float>(msg->twist.twist.linear.y);
+  const float v_z_frd = -static_cast<float>(msg->twist.twist.linear.z);
+
+  const float w_x_frd = static_cast<float>(msg->twist.twist.angular.x);
+  const float w_y_frd = -static_cast<float>(msg->twist.twist.angular.y);
+  const float w_z_frd = -static_cast<float>(msg->twist.twist.angular.z);
+
+  // 4. Construct PX4 VehicleOdometry Message
+  px4_msgs::msg::VehicleOdometry px4_vo;
+  px4_vo.timestamp = this->get_clock()->now().nanoseconds() / 1000ULL;
+  px4_vo.timestamp_sample = msg->header.stamp.sec * 1000000ULL + msg->header.stamp.nanosec / 1000ULL;
+  px4_vo.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
+
+  px4_vo.position[0] = pos_x_ned;
+  px4_vo.position[1] = pos_y_ned;
+  px4_vo.position[2] = pos_z_ned;
+
+  px4_vo.q[0] = w_px4;
+  px4_vo.q[1] = x_px4;
+  px4_vo.q[2] = y_px4;
+  px4_vo.q[3] = z_px4;
+
+  px4_vo.velocity_frame = px4_msgs::msg::VehicleOdometry::VELOCITY_FRAME_BODY_FRD;
+  px4_vo.velocity[0] = v_x_frd;
+  px4_vo.velocity[1] = v_y_frd;
+  px4_vo.velocity[2] = v_z_frd;
+
+  px4_vo.angular_velocity[0] = w_x_frd;
+  px4_vo.angular_velocity[1] = w_y_frd;
+  px4_vo.angular_velocity[2] = w_z_frd;
+
+  // Variances (fallbacks if covariance matrix is unfilled)
+  px4_vo.position_variance[0] = static_cast<float>(msg->pose.covariance[0] > 0.0 ? msg->pose.covariance[0] : 0.01f);
+  px4_vo.position_variance[1] = static_cast<float>(msg->pose.covariance[7] > 0.0 ? msg->pose.covariance[7] : 0.01f);
+  px4_vo.position_variance[2] = static_cast<float>(msg->pose.covariance[14] > 0.0 ? msg->pose.covariance[14] : 0.01f);
+
+  px4_vo.orientation_variance[0] = static_cast<float>(msg->pose.covariance[21] > 0.0 ? msg->pose.covariance[21] : 0.02f);
+  px4_vo.orientation_variance[1] = static_cast<float>(msg->pose.covariance[28] > 0.0 ? msg->pose.covariance[28] : 0.02f);
+  px4_vo.orientation_variance[2] = static_cast<float>(msg->pose.covariance[35] > 0.0 ? msg->pose.covariance[35] : 0.02f);
+
+  px4_vo.velocity_variance[0] = static_cast<float>(msg->twist.covariance[0] > 0.0 ? msg->twist.covariance[0] : 0.01f);
+  px4_vo.velocity_variance[1] = static_cast<float>(msg->twist.covariance[7] > 0.0 ? msg->twist.covariance[7] : 0.01f);
+  px4_vo.velocity_variance[2] = static_cast<float>(msg->twist.covariance[14] > 0.0 ? msg->twist.covariance[14] : 0.01f);
+
+  vo_px4_pub_->publish(px4_vo);
 }
 
 }  // namespace pickme_odometry

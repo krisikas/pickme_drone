@@ -26,11 +26,13 @@ See `ARCHITECTURE.md` for full details and diagrams.
 - **`pickme-sim`** (`docker/sim.Dockerfile`): `FROM ubuntu:22.04`. Headless PX4 SITL + Gazebo Harmonic Server + Micro-XRCE-DDS + MAVLink Router.
 - **`pickme-sim-perception`** (`docker/sim-perception.Dockerfile`): `FROM osrf/ros:humble-desktop`. `ros_gz_bridge` mapping Gazebo topics to standard ROS 2 perception topics.
 - **`pickme-core`** (`docker/core.Dockerfile`): `FROM pickme-base`. Stable flight background services (`pickme_offboard`, `pickme_odometry`, `pickme_bringup`).
+- **`pickme-perception`** (`docker/perception.Dockerfile`): `FROM pickme-base`. RTAB-Map Visual Odometry and 3D SLAM.
 - **`pickme-dev`** (`docker/dev.Dockerfile`): `FROM pickme-base`. Dev sandbox with tools (`gdb`, `rqt`, `tmux`, `teleop`). Workspace mounted via volume.
 
 ### Code Distribution Rules
 - `pickme_interfaces` → compiled inside `pickme-base` (`COPY` + `colcon build`)
 - `pickme_offboard`, `pickme_odometry`, `pickme_bringup` → compiled inside `pickme-core` (`COPY` + `colcon build`)
+- `pickme_bringup` (perception launch/config) → compiled inside `pickme-perception` (`COPY` + `colcon build`)
 - `pickme_missions` → NOT copied. Mounted into `pickme-dev` via volumes. Compiled manually inside container.
 
 ---

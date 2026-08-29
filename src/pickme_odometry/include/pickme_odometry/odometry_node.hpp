@@ -44,6 +44,7 @@ public:
 private:
   void publish_static_transforms();
   void handle_vehicle_odometry(const px4_msgs::msg::VehicleOdometry::SharedPtr msg);
+  void handle_visual_odometry(const nav_msgs::msg::Odometry::SharedPtr msg);
 
   // === Frame & Parameter Members ===
   std::string odom_frame_;
@@ -61,13 +62,17 @@ private:
   double cam_roll_, cam_pitch_, cam_yaw_;
   bool publish_camera_tf_;
   bool publish_odom_;
+  bool enable_vo_bridge_;
   std::string odom_topic_;
+  std::string vo_topic_;
 
   // === ROS Entities ===
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   std::unique_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<px4_msgs::msg::VehicleOdometry>::SharedPtr vo_px4_pub_;
   rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr vo_sub_;
 };
 
 }  // namespace pickme_odometry

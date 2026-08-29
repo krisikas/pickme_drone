@@ -30,6 +30,10 @@ odometry_node:
     publish_odom_topic: true
     odom_topic_name: "/odom"
 
+    # Visual Odometry Bridge (RTAB-Map -> PX4 EKF2)
+    enable_visual_odometry_bridge: true
+    visual_odometry_topic: "/visual_odometry"
+
 # ── Flight Coordinator & Offboard Engine ──────────────────────────────────────
 offboard_node:
   ros__parameters:
