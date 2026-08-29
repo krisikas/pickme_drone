@@ -1,5 +1,5 @@
 /**
- * SafetyGuard — Implementation of flight safety constraints.
+ * SafetyGuard — Implementation of flight safety constraints and validation.
  */
 
 #include "pickme_offboard/safety_guard.hpp"
@@ -10,11 +10,13 @@ SafetyGuard::SafetyGuard(
   double geofence_radius,
   double geofence_min_alt,
   double geofence_max_alt,
-  double max_speed)
+  double max_speed,
+  double max_yaw_rate)
 : geofence_radius_(geofence_radius),
   geofence_min_alt_(geofence_min_alt),
   geofence_max_alt_(geofence_max_alt),
-  max_speed_(max_speed) {}
+  max_speed_(max_speed),
+  max_yaw_rate_(max_yaw_rate) {}
 
 bool SafetyGuard::validate_setpoint(
   double x, double y, double z, double yaw, double speed,
@@ -30,7 +32,7 @@ bool SafetyGuard::validate_setpoint(
 
   if (speed <= 0.0 || speed > max_speed_) {
     error_message = "Rejected: requested speed " + std::to_string(speed) +
-                    " m/s exceeds max limit [" + std::to_string(max_speed_) + " m/s]";
+                    " m/s exceeds limit (0.0, " + std::to_string(max_speed_) + "] m/s";
     return false;
   }
 
@@ -42,7 +44,9 @@ bool SafetyGuard::validate_setpoint(
     return false;
   }
 
-  if (z < geofence_min_alt_ || z > geofence_max_alt_) {
+  // Allow small margin (-0.3m) below min_alt to handle ground contact and sensor drift
+  constexpr double ALT_TOLERANCE = 0.3;
+  if (z < (geofence_min_alt_ - ALT_TOLERANCE) || z > geofence_max_alt_) {
     error_message = "Rejected: target altitude " + std::to_string(z) +
                     "m outside geofence corridor [" + std::to_string(geofence_min_alt_) +
                     ", " + std::to_string(geofence_max_alt_) + "m]";
@@ -73,6 +77,19 @@ void SafetyGuard::update_geofence(double radius, double min_alt, double max_alt)
   geofence_radius_ = radius;
   geofence_min_alt_ = min_alt;
   geofence_max_alt_ = max_alt;
+}
+
+void SafetyGuard::set_limits(double max_speed, double max_yaw_rate) {
+  max_speed_ = max_speed;
+  max_yaw_rate_ = max_yaw_rate;
+}
+
+double SafetyGuard::get_max_speed() const {
+  return max_speed_;
+}
+
+double SafetyGuard::get_max_yaw_rate() const {
+  return max_yaw_rate_;
 }
 
 }  // namespace pickme_offboard

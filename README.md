@@ -197,11 +197,21 @@ The root `Makefile` provides streamlined commands for the entire lifecycle:
 * `yaw` *(float64)*: Target heading in radians ($[-\pi, \pi]$).
 * `speed` *(float32)*: Linear flight speed in m/s (defaults to `default_speed` if set to 0).
 * `frame_id` *(string)*: Coordinate frame for target:
-  * `'odom'` / `'map'`: Global world-fixed coordinates.
-  * `'body'`: Relative to current drone heading and position ($+X$ forward, $+Y$ left, $+Z$ up).
+  * `'odom'`: Continuous world-fixed odometry frame (ENU).
+  * `'map'`: Global map origin (transformed to odom via SLAM / TF2).
+  * `'body'`: Relative to current drone horizontal heading and position ($+X$ forward, $+Y$ left, $+Z$ up).
   * `'base_link'`: Relative to full 3D body orientation.
-  * `'camera_link'`: Relative to camera optical mount.
+  * `'camera_link'` / `'camera_depth_optical_frame'`: Relative to camera optical sensor.
 * `auto_arm` *(bool)*: Automatically arms and switches to Offboard mode if true.
+
+### Telemetry Stream (`/pickme/flight_status`)
+
+The offboard node continuously publishes 20 Hz state machine and telemetry diagnostics over `pickme_interfaces/msg/FlightStatus`:
+* `state`: High-level flight state (`DISARMED`, `ARMING`, `ARMED`, `TAKEOFF`, `NAVIGATING`, `HOVERING`, `LANDING`, `EMERGENCY`).
+* `target_reached`: Real closed-loop arrival flag evaluated against physical drone position & velocity.
+* `remaining_distance`: Euclidean distance to active waypoint (meters).
+* `battery_voltage` & `battery_remaining`: Real-time power metrics from PX4.
+* `nav_state_str`: Raw PX4 navigation mode (`OFFBOARD`, `POSCTL`, `AUTO_LAND`, etc.).
 
 ---
 

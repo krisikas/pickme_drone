@@ -1,0 +1,53 @@
+# ============================================================================
+# PickmeDrone — Core Flight & Odometry Parameters (core_params.yaml)
+# ============================================================================
+# Note: use_sim_time is intentionally managed at the launch file level.
+# ============================================================================
+
+# ── State Estimation & TF2 Broadcasting ───────────────────────────────────────
+odometry_node:
+  ros__parameters:
+    odom_frame: "odom"
+    base_frame: "base_link"
+    body_frame: "body"
+    camera_frame: "camera_link"
+    camera_depth_frame: "camera_depth_frame"
+    camera_depth_optical_frame: "camera_depth_optical_frame"
+    camera_color_frame: "camera_color_frame"
+    camera_color_optical_frame: "camera_color_optical_frame"
+    camera_optical_frame: "camera_optical_frame"
+    imu_frame: "imu_link"
+
+    # OakD-Lite Camera Mount Offsets (on x500_depth model in FLU frame)
+    camera_offset_x: 0.12
+    camera_offset_y: 0.03
+    camera_offset_z: 0.242
+    camera_roll: 0.0
+    camera_pitch: 0.0
+    camera_yaw: 0.0
+
+    publish_camera_tf: true
+    publish_odom_topic: true
+    odom_topic_name: "/odom"
+
+# ── Flight Coordinator & Offboard Engine ──────────────────────────────────────
+offboard_node:
+  ros__parameters:
+    odom_frame: "odom"
+    base_frame: "base_link"
+    target_frame: "navigate_target"
+
+    # Flight Dynamics Limits
+    default_speed: 1.0           # Default navigation speed (m/s)
+    max_speed: 4.0               # Hard velocity safety ceiling (m/s)
+    max_yaw_rate: 1.5            # Maximum yaw angular velocity (rad/s)
+    takeoff_altitude: 2.0        # Default takeoff target altitude (m)
+    target_reached_threshold: 0.15 # Position arrival tolerance (m)
+
+    # 3D Geofence Constraints
+    geofence_radius: 25.0        # Max horizontal radius from origin (m)
+    geofence_min_alt: 0.0        # Min flight altitude floor (m)
+    geofence_max_alt: 15.0       # Max flight altitude ceiling (m)
+
+    # Safety Guard Watchdog
+    odom_timeout_sec: 1.0        # Max allowed odometry packet age (s)

@@ -1,5 +1,5 @@
 /**
- * CommandSender — Implementation of PX4 vehicle command transmission and control mode monitoring.
+ * CommandSender — Implementation of PX4 vehicle command transmission and telemetry monitoring.
  */
 
 #include "pickme_offboard/command_sender.hpp"
@@ -18,7 +18,7 @@ CommandSender::CommandSender(rclcpp::Node * node, rclcpp::CallbackGroup::SharedP
   }
 
   cmd_pub_ = node_->create_publisher<px4_msgs::msg::VehicleCommand>(
-    "/fmu/in/vehicle_command", 10);
+    "/fmu/in/vehicle_command", px4_qos);
 
   ack_sub_ = node_->create_subscription<px4_msgs::msg::VehicleCommandAck>(
     "/fmu/out/vehicle_command_ack", px4_qos,
@@ -33,6 +33,11 @@ CommandSender::CommandSender(rclcpp::Node * node, rclcpp::CallbackGroup::SharedP
   control_mode_sub_ = node_->create_subscription<px4_msgs::msg::VehicleControlMode>(
     "/fmu/out/vehicle_control_mode", px4_qos,
     std::bind(&CommandSender::handle_control_mode, this, std::placeholders::_1),
+    sub_options);
+
+  battery_sub_ = node_->create_subscription<px4_msgs::msg::BatteryStatus>(
+    "/fmu/out/battery_status", px4_qos,
+    std::bind(&CommandSender::handle_battery_status, this, std::placeholders::_1),
     sub_options);
 }
 
@@ -59,39 +64,44 @@ void CommandSender::send_command(
   cmd_pub_->publish(msg);
 }
 
-bool CommandSender::send_command_and_wait(
-  uint32_t command,
-  float param1, float param2, float param3,
-  float param4, float param5, float param6, float param7,
-  std::string & out_msg,
-  std::chrono::milliseconds /*timeout*/) {
-  send_command(command, param1, param2, param3, param4, param5, param6, param7);
-  out_msg = "Command dispatched to PX4";
-  return true;
-}
-
-bool CommandSender::arm(std::string & out_msg, std::chrono::milliseconds /*timeout*/) {
+bool CommandSender::arm(std::string & out_msg) {
+  if (!is_connected()) {
+    out_msg = "Cannot arm: flight controller disconnected";
+    return false;
+  }
   send_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0f);
-  out_msg = "Arm command sent to PX4";
+  out_msg = "Arm command dispatched to PX4";
   return true;
 }
 
-bool CommandSender::disarm(std::string & out_msg, std::chrono::milliseconds /*timeout*/) {
+bool CommandSender::disarm(std::string & out_msg) {
+  if (!is_connected()) {
+    out_msg = "Cannot disarm: flight controller disconnected";
+    return false;
+  }
   send_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0f);
-  out_msg = "Disarm command sent to PX4";
+  out_msg = "Disarm command dispatched to PX4";
   return true;
 }
 
-bool CommandSender::set_offboard_mode(std::string & out_msg, std::chrono::milliseconds /*timeout*/) {
+bool CommandSender::set_offboard_mode(std::string & out_msg) {
+  if (!is_connected()) {
+    out_msg = "Cannot set offboard: flight controller disconnected";
+    return false;
+  }
   // 1 = MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 6 = PX4_CUSTOM_MAIN_MODE_OFFBOARD
   send_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_DO_SET_MODE, 1.0f, 6.0f);
-  out_msg = "Offboard mode command sent to PX4";
+  out_msg = "Offboard mode command dispatched to PX4";
   return true;
 }
 
-bool CommandSender::land(std::string & out_msg, std::chrono::milliseconds /*timeout*/) {
+bool CommandSender::land(std::string & out_msg) {
+  if (!is_connected()) {
+    out_msg = "Cannot land: flight controller disconnected";
+    return false;
+  }
   send_command(px4_msgs::msg::VehicleCommand::VEHICLE_CMD_NAV_LAND);
-  out_msg = "Land command sent to PX4";
+  out_msg = "Land command dispatched to PX4";
   return true;
 }
 
@@ -156,9 +166,30 @@ std::string CommandSender::get_nav_state_str() const {
   }
 }
 
+float CommandSender::get_battery_voltage() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return battery_voltage_;
+}
+
+float CommandSender::get_battery_remaining() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return battery_remaining_;
+}
+
+bool CommandSender::get_last_ack(uint32_t command, uint8_t & out_result, rclcpp::Time & out_time) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = last_acks_.find(command);
+  if (it != last_acks_.end()) {
+    out_result = it->second.result;
+    out_time = it->second.timestamp;
+    return true;
+  }
+  return false;
+}
+
 void CommandSender::handle_command_ack(const px4_msgs::msg::VehicleCommandAck::SharedPtr msg) {
   std::lock_guard<std::mutex> lock(mutex_);
-  CommandAckResult ack;
+  CommandAckRecord ack;
   ack.result = msg->result;
   ack.timestamp = node_->get_clock()->now();
   last_acks_[msg->command] = ack;
@@ -182,6 +213,12 @@ void CommandSender::handle_control_mode(const px4_msgs::msg::VehicleControlMode:
   std::lock_guard<std::mutex> lock(mutex_);
   control_mode_ = msg;
   last_control_mode_time_ = node_->get_clock()->now();
+}
+
+void CommandSender::handle_battery_status(const px4_msgs::msg::BatteryStatus::SharedPtr msg) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  battery_voltage_ = msg->voltage_v;
+  battery_remaining_ = msg->remaining;
 }
 
 std::string CommandSender::format_ack_error(uint8_t result) const {

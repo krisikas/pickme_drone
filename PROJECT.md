@@ -72,7 +72,7 @@ Both `pickme-camera` (real hardware) and `pickme-sim-perception` (simulation) MU
 - `compose/`: Compose files (`compose/compose.sim.yaml`, `compose/compose.real.yaml`).
 - `docker/`: Dockerfiles and container entrypoints (`docker/sim-entrypoint.sh`).
 - `sim/`: Gazebo GUI launch script (`sim/run_gui.sh`), bridge config (`sim/config/bridge.yaml`), custom worlds and models.
-- `src/`: ROS 2 packages (`pickme_bringup`, `pickme_core`, `pickme_interfaces`, `pickme_missions`).
+- `src/`: ROS 2 packages (`pickme_bringup`, `pickme_odometry`, `pickme_offboard`, `pickme_interfaces`).
 
 ---
 
@@ -88,13 +88,13 @@ The project strictly follows **REP-105** (Coordinate Frames for Mobile Platforms
   $$w_{ros} = \frac{\sqrt{2}}{2} (w_{px4} + z_{px4}),\quad x_{ros} = \frac{\sqrt{2}}{2} (x_{px4} + y_{px4})$$
   $$y_{ros} = \frac{\sqrt{2}}{2} (x_{px4} - y_{px4}),\quad z_{ros} = \frac{\sqrt{2}}{2} (w_{px4} - z_{px4})$$
 
-### Complete TF Tree Topology (RealSense D435 Standard)
+### Complete TF Tree Topology (OakD-Lite on x500 Standard)
 ```text
 odom (ENU: World-fixed continuous odometry)
  │
  └── base_link (FLU: Drone body center) [Dynamic /tf from PX4 VehicleOdometry]
       │
-      ├── camera_link (FLU: Center of Left IR sensor, X=+0.132m, Y=0, Z=+0.021m)
+      ├── camera_link (FLU: Center of OakD-Lite mount, X=+0.12m, Y=+0.03m, Z=+0.242m)
       │    │
       │    ├── camera_depth_frame (FLU: 0, 0, 0)
       │    │    └── camera_depth_optical_frame (RDF: Optical axis for depth & pointcloud)
@@ -109,10 +109,10 @@ odom (ENU: World-fixed continuous odometry)
 
 ### Dual-Mode TF Strategy (Simulation ↔ Real Drone)
 - **Simulation (`publish_camera_tf: true`, default)**:
-  `transform_node` (in `pickme_core`) publishes the complete camera TF tree because Gazebo has no physical EEPROM calibration chip.
+  `odometry_node` (in `pickme_odometry`) publishes the complete camera TF tree because Gazebo has no physical EEPROM calibration chip.
   *Note on Gazebo DepthCamera*: Gazebo Harmonic's `gz-sensors` generates 3D point cloud coordinates natively in the FLU robot body frame ($+X$ forward, $+Y$ left, $+Z$ up). Therefore, the simulated point cloud topic `/camera/depth/color/points` attaches directly to `camera_depth_frame` (FLU) in simulation to avoid double-rotating the points.
 - **Real Drone (`publish_camera_tf: false`)**:
-  `transform_node` publishes only `odom -> base_link` and `base_link -> camera_link`. The internal camera frames (`camera_link -> ... -> optical_frames`) are broadcast directly by the official `realsense2_camera` driver with factory EEPROM calibrations (which generates point clouds in RDF `camera_depth_optical_frame`).
+  `odometry_node` publishes only `odom -> base_link` and `base_link -> camera_link`. The internal camera frames (`camera_link -> ... -> optical_frames`) are broadcast directly by the official camera driver.
 
 ---
 

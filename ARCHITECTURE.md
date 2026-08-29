@@ -152,6 +152,8 @@ PickmeDrone combines three distinct high-performance communication protocols tai
 ```text
 src/
 ├── pickme_interfaces/                 # [DATA CONTRACTS] Custom ROS 2 interfaces
+│   ├── msg/
+│   │   └── FlightStatus.msg           # Comprehensive state machine, telemetry & diagnostics
 │   ├── srv/
 │   │   ├── Navigate.srv               # 3D Position, Yaw, Speed, Frame ID, Auto-Arm
 │   │   ├── SetAltitude.srv            # Independent Z altitude control
@@ -165,17 +167,17 @@ src/
 │   │   └── odometry_node.hpp          # OdometryNode definition
 │   ├── src/
 │   │   └── odometry_node.cpp          # PX4 NED -> ROS ENU transforms, dynamic /tf,
-│   │                                  # RealSense static TF tree, VO -> PX4 bridge
+│   │                                  # OakD-Lite static TF tree, VO -> PX4 bridge
 │   └── launch/
 │       └── odometry.launch.py
 │
 ├── pickme_offboard/                   # [REAL-TIME FLIGHT CONTROL CORE]
 │   ├── include/pickme_offboard/
 │   │   ├── heartbeat_manager.hpp      # 10 Hz OffboardControlMode pulse generator
-│   │   ├── command_sender.hpp         # VehicleCommand dispatcher (Arm, Disarm, Land)
-│   │   ├── trajectory_tracker.hpp     # 50 Hz velocity-bounded setpoint interpolator
+│   │   ├── command_sender.hpp         # VehicleCommand dispatcher & telemetry feedback
+│   │   ├── trajectory_tracker.hpp     # 50 Hz closed-loop setpoint interpolator & lag limiter
 │   │   ├── safety_guard.hpp           # 3D Geofence, NaN check, odometry watchdog
-│   │   └── offboard_node.hpp          # Orchestrator & Fast non-blocking ROS 2 services
+│   │   └── offboard_node.hpp          # Orchestrator, 20Hz /pickme/flight_status & fast services
 │   ├── src/
 │   │   ├── heartbeat_manager.cpp
 │   │   ├── command_sender.cpp
@@ -191,7 +193,7 @@ src/
     │   ├── perception.launch.py       # Launches RTAB-Map RGB-D VO & 3D SLAM
     │   └── foxglove.launch.py         # Launches foxglove_bridge server
     └── config/
-        ├── params.yaml                # Flight dynamics, geofence, and frame parameters
+        ├── core_params.yaml           # Centralized flight dynamics, geofence, and frame parameters
         └── perception.yaml            # RTAB-Map feature extraction and graph optimizer parameters
 ```
 

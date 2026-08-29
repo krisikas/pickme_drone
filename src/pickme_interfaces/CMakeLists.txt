@@ -7,10 +7,12 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/FlightStatus.msg"
   "srv/Navigate.srv"
   "srv/SetAltitude.srv"
   "srv/SetYaw.srv"
   "srv/GetTelemetry.srv"
+  DEPENDENCIES std_msgs geometry_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

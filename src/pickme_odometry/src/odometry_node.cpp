@@ -20,9 +20,9 @@ OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
   camera_optical_frame_ = this->declare_parameter<std::string>("camera_optical_frame", "camera_optical_frame");
   imu_frame_ = this->declare_parameter<std::string>("imu_frame", "imu_link");
 
-  cam_x_ = this->declare_parameter<double>("camera_offset_x", 0.132);
-  cam_y_ = this->declare_parameter<double>("camera_offset_y", 0.0);
-  cam_z_ = this->declare_parameter<double>("camera_offset_z", 0.021);
+  cam_x_ = this->declare_parameter<double>("camera_offset_x", 0.12);
+  cam_y_ = this->declare_parameter<double>("camera_offset_y", 0.03);
+  cam_z_ = this->declare_parameter<double>("camera_offset_z", 0.242);
   cam_roll_ = this->declare_parameter<double>("camera_roll", 0.0);
   cam_pitch_ = this->declare_parameter<double>("camera_pitch", 0.0);
   cam_yaw_ = this->declare_parameter<double>("camera_yaw", 0.0);

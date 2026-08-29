@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     bringup_dir = get_package_share_directory('pickme_bringup')
-    default_params_file = os.path.join(bringup_dir, 'config', 'params.yaml')
+    default_params_file = os.path.join(bringup_dir, 'config', 'core_params.yaml')
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
     params_file = LaunchConfiguration('params_file', default=default_params_file)
