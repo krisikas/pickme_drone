@@ -78,6 +78,10 @@ private:
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
+  void handle_offboard(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
   void handle_land(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
@@ -132,7 +136,10 @@ private:
   std::string last_error_{""};
 
   // === ROS Entities & Callback Groups ===
+  rclcpp::CallbackGroup::SharedPtr timer_cb_group_;
   rclcpp::CallbackGroup::SharedPtr service_cb_group_;
+  rclcpp::CallbackGroup::SharedPtr sensor_cb_group_;
+
   rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<pickme_interfaces::msg::FlightStatus>::SharedPtr flight_status_pub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
@@ -140,6 +147,7 @@ private:
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr arm_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disarm_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr offboard_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr takeoff_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr land_service_;
   rclcpp::Service<pickme_interfaces::srv::Navigate>::SharedPtr navigate_service_;

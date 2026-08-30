@@ -13,13 +13,14 @@ def generate_launch_description():
     except Exception:
         default_params_file = ''
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+    default_use_sim_time = os.environ.get('USE_SIM_TIME', 'false').lower() in ('true', '1', 'yes')
+    use_sim_time = LaunchConfiguration('use_sim_time', default=str(default_use_sim_time).lower())
     params_file = LaunchConfiguration('params_file', default=default_params_file)
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_sim_time',
-            default_value='false',
+            default_value=str(default_use_sim_time).lower(),
             description='Use simulation clock if true',
         ),
         DeclareLaunchArgument(

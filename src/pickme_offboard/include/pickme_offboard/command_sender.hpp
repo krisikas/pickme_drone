@@ -56,6 +56,7 @@ private:
   void handle_vehicle_status(const px4_msgs::msg::VehicleStatus::SharedPtr msg);
   void handle_control_mode(const px4_msgs::msg::VehicleControlMode::SharedPtr msg);
   void handle_battery_status(const px4_msgs::msg::BatteryStatus::SharedPtr msg);
+  bool is_connected_unlocked() const;
 
   rclcpp::Node * node_;
   rclcpp::Publisher<px4_msgs::msg::VehicleCommand>::SharedPtr cmd_pub_;
@@ -64,7 +65,7 @@ private:
   rclcpp::Subscription<px4_msgs::msg::VehicleControlMode>::SharedPtr control_mode_sub_;
   rclcpp::Subscription<px4_msgs::msg::BatteryStatus>::SharedPtr battery_sub_;
 
-  mutable std::mutex mutex_;
+  mutable std::recursive_mutex mutex_;
   px4_msgs::msg::VehicleStatus::SharedPtr vehicle_status_;
   px4_msgs::msg::VehicleControlMode::SharedPtr control_mode_;
   std::unordered_map<uint32_t, CommandAckRecord> last_acks_;

@@ -100,6 +100,7 @@ services:
     environment:
       - ROS_DOMAIN_ID=0
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=true
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
     depends_on:
@@ -117,6 +118,7 @@ services:
       - ROS_DOMAIN_ID=0
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - SLAM_ENABLE=true
+      - USE_SIM_TIME=true
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
     depends_on:
@@ -152,6 +154,7 @@ services:
     environment:
       - ROS_DOMAIN_ID=0
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=true
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../workspace:/home/developer/workspace
