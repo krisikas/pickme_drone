@@ -13,7 +13,8 @@ def generate_launch_description():
     default_params_file = os.path.join(bringup_dir, 'config', 'perception_params.yaml')
     default_slam = os.environ.get('SLAM_ENABLE', 'false').lower() in ('true', '1', 'yes')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    default_use_sim_time = os.environ.get('USE_SIM_TIME', 'false').lower() in ('true', '1', 'yes')
+    use_sim_time = LaunchConfiguration('use_sim_time', default=str(default_use_sim_time).lower())
     slam = LaunchConfiguration('slam', default=str(default_slam).lower())
     publish_tf = LaunchConfiguration('publish_tf', default='false')
     params_file = LaunchConfiguration('params_file', default=default_params_file)
@@ -25,7 +26,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_sim_time',
-            default_value='true',
+            default_value=str(default_use_sim_time).lower(),
             description='Use simulation clock if true',
         ),
         DeclareLaunchArgument(

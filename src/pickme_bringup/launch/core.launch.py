@@ -10,13 +10,14 @@ def generate_launch_description():
     bringup_dir = get_package_share_directory('pickme_bringup')
     default_params_file = os.path.join(bringup_dir, 'config', 'core_params.yaml')
 
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    default_use_sim_time = os.environ.get('USE_SIM_TIME', 'false').lower() in ('true', '1', 'yes')
+    use_sim_time = LaunchConfiguration('use_sim_time', default=str(default_use_sim_time).lower())
     params_file = LaunchConfiguration('params_file', default=default_params_file)
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'use_sim_time',
-            default_value='true',
+            default_value=str(default_use_sim_time).lower(),
             description='Use simulation clock if true',
         ),
         DeclareLaunchArgument(

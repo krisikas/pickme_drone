@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 # ── Build px4_msgs into /opt/ros/humble overlay ──
 RUN mkdir -p /tmp/px4_ws/src && \
-    git clone -b release/1.15 https://github.com/PX4/px4_msgs.git /tmp/px4_ws/src/px4_msgs && \
+    git clone -b release/1.16 https://github.com/PX4/px4_msgs.git /tmp/px4_ws/src/px4_msgs && \
     /bin/bash -c "source /opt/ros/humble/setup.bash && \
         cd /tmp/px4_ws && \
         colcon build --install-base /opt/ros/humble --merge-install" && \

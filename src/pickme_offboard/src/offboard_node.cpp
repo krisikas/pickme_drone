@@ -12,6 +12,38 @@
  * - Fast non-blocking ROS 2 services (<1ms response time)
  * - Universal 3D TF2 target frame resolution (odom, map, body, base_link, camera_link)
  * - Real-time Safety Guard (Geofence, NaN/Inf checks, speed limits, odometry watchdog)
+ * 
+ * ----------------------------------------------------------------------------
+ * CLI Usage Examples:
+ * ----------------------------------------------------------------------------
+ * 1. Telemetry inspection:
+ *    ros2 service call /pickme/get_telemetry pickme_interfaces/srv/GetTelemetry "{frame_id: 'odom'}"
+ * 
+ * 2. Arm vehicle:
+ *    ros2 service call /pickme/arm std_srvs/srv/Trigger {}
+ * 
+ * 3. Takeoff to default altitude (2.0m):
+ *    ros2 service call /pickme/takeoff std_srvs/srv/Trigger {}
+ * 
+ * 4. Navigate in global world frame (odom):
+ *    ros2 service call /pickme/navigate pickme_interfaces/srv/Navigate "{x: 2.0, y: 1.0, z: 2.0, yaw: 0.0, speed: 0.5, frame_id: 'odom', auto_arm: false}"
+ * 
+ * 5. Navigate relative to drone's horizontal heading (1 meter forward, 0.5m left):
+ *    ros2 service call /pickme/navigate pickme_interfaces/srv/Navigate "{x: 1.0, y: 0.5, z: 0.0, yaw: 0.0, speed: 0.5, frame_id: 'body', auto_arm: false}"
+ * 
+ * 6. Change altitude or yaw independently:
+ *    ros2 service call /pickme/set_altitude pickme_interfaces/srv/SetAltitude "{z: 3.0, frame_id: 'odom'}"
+ *    ros2 service call /pickme/set_yaw pickme_interfaces/srv/SetYaw "{yaw: 1.57, frame_id: 'odom'}"
+ * 
+ * 7. Switch to Offboard flight mode:
+ *    ros2 service call /pickme/offboard std_srvs/srv/Trigger {}
+ * 
+ * 8. Land vehicle:
+ *    ros2 service call /pickme/land std_srvs/srv/Trigger {}
+ * 
+ * 9. Disarm vehicle:
+ *    ros2 service call /pickme/disarm std_srvs/srv/Trigger {}
+ * ============================================================================
  */
 
 #include "pickme_offboard/offboard_node.hpp"
@@ -37,12 +69,14 @@ OffboardNode::OffboardNode(const rclcpp::NodeOptions & options)
   odom_timeout_sec_ = this->declare_parameter<double>("odom_timeout_sec", 1.0);
   target_reached_threshold_ = this->declare_parameter<double>("target_reached_threshold", 0.15);
 
-  // === Callback Groups for Concurrency ===
-  service_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  // === Callback Groups for Concurrency & Deadlock Prevention ===
+  timer_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  service_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+  sensor_cb_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
   // === Initialize Modular Components ===
   heartbeat_mgr_ = std::make_unique<HeartbeatManager>(this);
-  cmd_sender_ = std::make_unique<CommandSender>(this, service_cb_group_);
+  cmd_sender_ = std::make_unique<CommandSender>(this, sensor_cb_group_);
   safety_guard_ = std::make_unique<SafetyGuard>(
     geofence_radius_, geofence_min_alt_, geofence_max_alt_, max_speed_, max_yaw_rate_);
   trajectory_tracker_ = std::make_unique<TrajectoryTracker>(
@@ -52,71 +86,74 @@ OffboardNode::OffboardNode(const rclcpp::NodeOptions & options)
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-  // === QoS Configuration ===
-  auto px4_qos = rclcpp::QoS(rclcpp::KeepLast(1))
-                   .best_effort()
-                   .transient_local();
-
   // === Subscribers & Publishers ===
+  rclcpp::SubscriptionOptions sensor_sub_opts;
+  sensor_sub_opts.callback_group = sensor_cb_group_;
+
   odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-    "/fmu/out/vehicle_odometry", px4_qos,
-    std::bind(&OffboardNode::handle_odometry, this, std::placeholders::_1));
+    "/fmu/out/vehicle_odometry", rclcpp::SensorDataQoS(),
+    std::bind(&OffboardNode::handle_odometry, this, std::placeholders::_1),
+    sensor_sub_opts);
 
   flight_status_pub_ = this->create_publisher<pickme_interfaces::msg::FlightStatus>(
     "/pickme/flight_status", 10);
 
-  // === 50 Hz Control Loop (20 ms) ===
+  // === 50 Hz Control Loop (20 ms) & 20 Hz Status Loop (50 ms) ===
   control_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(20),
-    std::bind(&OffboardNode::control_loop, this));
+    std::bind(&OffboardNode::control_loop, this),
+    timer_cb_group_);
 
-  // === 20 Hz Status Publisher Loop (50 ms) ===
   status_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(50),
-    std::bind(&OffboardNode::status_publish_loop, this));
+    std::bind(&OffboardNode::status_publish_loop, this),
+    timer_cb_group_);
 
-  // === Service Servers (with Dedicated Callback Group) ===
-  rclcpp::ServicesQoS srv_qos;
-
+  // === Service Servers (Reentrant Callback Group) ===
   arm_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/pickme/arm",
     std::bind(&OffboardNode::handle_arm, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   disarm_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/pickme/disarm",
     std::bind(&OffboardNode::handle_disarm, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
+
+  offboard_service_ = this->create_service<std_srvs::srv::Trigger>(
+    "/pickme/offboard",
+    std::bind(&OffboardNode::handle_offboard, this, std::placeholders::_1, std::placeholders::_2),
+    rmw_qos_profile_services_default, service_cb_group_);
 
   takeoff_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/pickme/takeoff",
     std::bind(&OffboardNode::handle_takeoff, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   land_service_ = this->create_service<std_srvs::srv::Trigger>(
     "/pickme/land",
     std::bind(&OffboardNode::handle_land, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   navigate_service_ = this->create_service<pickme_interfaces::srv::Navigate>(
     "/pickme/navigate",
     std::bind(&OffboardNode::handle_navigate, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   set_altitude_service_ = this->create_service<pickme_interfaces::srv::SetAltitude>(
     "/pickme/set_altitude",
     std::bind(&OffboardNode::handle_set_altitude, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   set_yaw_service_ = this->create_service<pickme_interfaces::srv::SetYaw>(
     "/pickme/set_yaw",
     std::bind(&OffboardNode::handle_set_yaw, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   telemetry_service_ = this->create_service<pickme_interfaces::srv::GetTelemetry>(
     "/pickme/get_telemetry",
     std::bind(&OffboardNode::handle_get_telemetry, this, std::placeholders::_1, std::placeholders::_2),
-    srv_qos.get_rmw_qos_profile(), service_cb_group_);
+    rmw_qos_profile_services_default, service_cb_group_);
 
   RCLCPP_INFO(this->get_logger(), "OffboardNode initialized (Modular, Concurrency-Safe & Status-Enabled)");
 }
@@ -240,7 +277,7 @@ void OffboardNode::status_publish_loop() {
   status.remaining_distance = static_cast<float>(trajectory_tracker_->get_remaining_distance());
 
   status.battery_voltage = cmd_sender_->get_battery_voltage();
-  status.battery_remaining = cmd_sender_->get_battery_remaining();
+  status.battery_percentage = cmd_sender_->get_battery_remaining();
   status.last_error = last_error_;
 
   flight_status_pub_->publish(status);
@@ -309,17 +346,23 @@ bool OffboardNode::resolve_target_to_odom(
 void OffboardNode::handle_arm(
   const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
   std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-  RCLCPP_INFO(this->get_logger(), "ARM requested");
-  std::string msg;
-  bool success = cmd_sender_->arm(msg);
+  RCLCPP_INFO(this->get_logger(), "ARM requested (arming and activating Offboard stream)");
 
-  if (success) {
-    flight_state_ = FlightState::ARMING;
-  } else {
-    last_error_ = msg;
+  if (!trajectory_tracker_->is_initialized()) {
+    trajectory_tracker_->snap_to_position(current_pos_.x, current_pos_.y, current_pos_.z, current_pos_.yaw);
   }
-  response->success = success;
-  response->message = msg;
+  heartbeat_mgr_->set_position_control(true);
+  heartbeat_mgr_->start();
+  trajectory_tracker_->set_streaming_enabled(true);
+
+  std::string arm_msg;
+  bool arm_ok = cmd_sender_->arm(arm_msg);
+  std::string mode_msg;
+  bool mode_ok = cmd_sender_->set_offboard_mode(mode_msg);
+
+  flight_state_ = FlightState::ARMED;
+  response->success = arm_ok && mode_ok;
+  response->message = arm_msg + " | " + mode_msg;
 }
 
 void OffboardNode::handle_disarm(
@@ -334,6 +377,25 @@ void OffboardNode::handle_disarm(
 
   response->success = success;
   response->message = msg;
+}
+
+void OffboardNode::handle_offboard(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+  RCLCPP_INFO(this->get_logger(), "OFFBOARD mode requested");
+
+  if (!trajectory_tracker_->is_initialized()) {
+    trajectory_tracker_->snap_to_position(current_pos_.x, current_pos_.y, current_pos_.z, current_pos_.yaw);
+  }
+  heartbeat_mgr_->set_position_control(true);
+  heartbeat_mgr_->start();
+  trajectory_tracker_->set_streaming_enabled(true);
+
+  std::string mode_msg;
+  bool success = cmd_sender_->set_offboard_mode(mode_msg);
+
+  response->success = success;
+  response->message = mode_msg;
 }
 
 void OffboardNode::handle_takeoff(
@@ -356,32 +418,28 @@ void OffboardNode::handle_takeoff(
 
   RCLCPP_INFO(this->get_logger(), "TAKEOFF requested to altitude %.1fm", takeoff_altitude_);
 
-  // 1. Arm vehicle if needed
-  if (!cmd_sender_->is_armed()) {
-    std::string arm_msg;
-    if (!cmd_sender_->arm(arm_msg)) {
-      response->success = false;
-      response->message = "Takeoff failed: " + arm_msg;
-      last_error_ = response->message;
-      return;
-    }
+  if (!trajectory_tracker_->is_initialized()) {
+    trajectory_tracker_->snap_to_position(current_pos_.x, current_pos_.y, current_pos_.z, current_pos_.yaw);
   }
-
-  // 2. Prepare Setpoint stream and Heartbeat
   heartbeat_mgr_->set_position_control(true);
   heartbeat_mgr_->start();
   trajectory_tracker_->set_streaming_enabled(true);
-  trajectory_tracker_->snap_to_position(current_pos_.x, current_pos_.y, current_pos_.z, current_pos_.yaw);
-  trajectory_tracker_->set_target(
-    current_pos_.x, current_pos_.y, takeoff_altitude_, current_pos_.yaw, default_speed_);
 
-  // 3. Switch to Offboard Mode
+  std::string arm_msg;
+  cmd_sender_->arm(arm_msg);
   std::string mode_msg;
   cmd_sender_->set_offboard_mode(mode_msg);
 
+  double target_z = current_pos_.z + takeoff_altitude_;
+  if (target_z > geofence_max_alt_) {
+    target_z = geofence_max_alt_;
+  }
+  trajectory_tracker_->set_target(
+    current_pos_.x, current_pos_.y, target_z, current_pos_.yaw, default_speed_);
+
   flight_state_ = FlightState::TAKEOFF;
   response->success = true;
-  response->message = "Takeoff initiated (Target Alt: " + std::to_string(takeoff_altitude_) + "m)";
+  response->message = "Takeoff initiated (Target Alt: " + std::to_string(target_z) + "m)";
 }
 
 void OffboardNode::handle_land(
@@ -389,7 +447,6 @@ void OffboardNode::handle_land(
   std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
   RCLCPP_INFO(this->get_logger(), "LAND requested");
 
-  // Disable TrajectoryTracker streaming and offboard position control so PX4 Auto-Land takes full control
   trajectory_tracker_->set_streaming_enabled(false);
   heartbeat_mgr_->set_position_control(false);
   trajectory_tracker_->reset_target();
@@ -414,7 +471,6 @@ void OffboardNode::handle_navigate(
     return;
   }
 
-  // 1. Resolve requested coordinates to odom frame using TF2
   double target_x, target_y, target_z, target_yaw;
   std::string tf_err;
   if (!resolve_target_to_odom(
@@ -429,7 +485,6 @@ void OffboardNode::handle_navigate(
 
   double speed = request->speed > 0.05 ? static_cast<double>(request->speed) : default_speed_;
 
-  // 2. Safety Validation (Geofence, NaN, limits)
   std::string safety_err;
   if (!safety_guard_->validate_setpoint(target_x, target_y, target_z, target_yaw, speed, safety_err)) {
     RCLCPP_ERROR(this->get_logger(), "Navigate rejected by safety guard: %s", safety_err.c_str());
@@ -439,8 +494,7 @@ void OffboardNode::handle_navigate(
     return;
   }
 
-  // 3. Auto-arm and engage Offboard mode if requested
-  if (request->auto_arm && !cmd_sender_->is_armed()) {
+  if (request->auto_arm || !cmd_sender_->is_armed()) {
     std::string arm_msg;
     cmd_sender_->arm(arm_msg);
   }
@@ -449,12 +503,9 @@ void OffboardNode::handle_navigate(
   heartbeat_mgr_->start();
   trajectory_tracker_->set_streaming_enabled(true);
 
-  if (!cmd_sender_->is_offboard()) {
-    std::string mode_msg;
-    cmd_sender_->set_offboard_mode(mode_msg);
-  }
+  std::string mode_msg;
+  cmd_sender_->set_offboard_mode(mode_msg);
 
-  // 4. Set target in Trajectory Tracker
   trajectory_tracker_->set_target(target_x, target_y, target_z, target_yaw, speed);
   flight_state_ = FlightState::NAVIGATING;
 

@@ -42,20 +42,21 @@ OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
   }
 
   // === PX4 Subscription & Publishers ===
-  auto px4_qos = rclcpp::QoS(rclcpp::KeepLast(1))
-                   .best_effort()
-                   .transient_local();
+  auto px4_pub_qos = rclcpp::QoS(rclcpp::KeepLast(1))
+                       .best_effort()
+                       .transient_local();
+  auto px4_sub_qos = rclcpp::SensorDataQoS();
 
   odom_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-    "/fmu/out/vehicle_odometry", px4_qos,
+    "/fmu/out/vehicle_odometry", px4_sub_qos,
     std::bind(&OdometryNode::handle_vehicle_odometry, this, std::placeholders::_1));
 
   if (enable_vo_bridge_) {
     vo_px4_pub_ = this->create_publisher<px4_msgs::msg::VehicleOdometry>(
-      "/fmu/in/vehicle_visual_odometry", px4_qos);
+      "/fmu/in/vehicle_visual_odometry", px4_pub_qos);
 
     vo_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      vo_topic_, rclcpp::SensorDataQoS(),
+      vo_topic_, px4_sub_qos,
       std::bind(&OdometryNode::handle_visual_odometry, this, std::placeholders::_1));
 
     RCLCPP_INFO(

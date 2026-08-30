@@ -54,15 +54,22 @@ Both `pickme-camera` (real hardware) and `pickme-sim-perception` (simulation) MU
 
 ## QoS Guidelines & Flight Controller Communication
 
-1. **PX4 Topics (`/fmu/in/*`, `/fmu/out/*`)**:
+1. **PX4 Output Subscriptions (`/fmu/out/*`)**:
+   - Must use `SensorDataQoS` (`BEST_EFFORT`, `VOLATILE`, `keep_last(5)`).
+   - In DDS, volatile subscribers match both volatile and transient-local publishers without incompatibility.
+2. **PX4 Input Publishers (`/fmu/in/*`)**:
    - Must use `PX4_QOS`:
      - Reliability: `BEST_EFFORT`
      - Durability: `TRANSIENT_LOCAL`
      - History: `KEEP_LAST`, Depth: `1`
-2. **Sensor Streams (`/camera/*`)**:
+3. **Sensor Streams (`/camera/*`)**:
    - Use `SensorDataQoS` (`BEST_EFFORT`, `VOLATILE`, depth: 5) for high-bandwidth images and pointclouds.
-3. **Offboard Heartbeat**:
-   - `OffboardControlMode` messages must be published continuously at **>= 2 Hz** (standard: 10 Hz) before and during offboard flight, otherwise PX4 failsafe kicks in.
+4. **Offboard Heartbeat & Activation**:
+   - `OffboardControlMode` messages must be published continuously at **>= 2 Hz** (standard: 10 Hz) before and during offboard flight.
+   - Calling `/pickme/arm`, `/pickme/offboard`, `/pickme/takeoff`, or `/pickme/navigate` automatically ensures heartbeat is running, trajectory stream is active (snapped to drone position), and dispatches `VEHICLE_CMD_DO_SET_MODE (1.0, 6.0)` to PX4.
+5. **Time Synchronization (`use_sim_time`)**:
+   - Managed at runtime via environment variable `USE_SIM_TIME` and launch arguments.
+   - Never hardcoded inside `.yaml` files or Dockerfile `CMD`.
 
 ---
 
