@@ -70,6 +70,12 @@ Both `pickme-camera` (real hardware) and `pickme-sim-perception` (simulation) MU
 5. **Time Synchronization (`use_sim_time`)**:
    - Managed at runtime via environment variable `USE_SIM_TIME` and launch arguments.
    - Never hardcoded inside `.yaml` files or Dockerfile `CMD`.
+6. **Concurrency & Thread Safety**:
+   - `OffboardNode` uses 3 isolated Callback Groups with `MultiThreadedExecutor`:
+     - `timer_cb_group_` (`MutuallyExclusive`): 50 Hz control loop & 20 Hz status publisher.
+     - `service_cb_group_` (`Reentrant`): all service servers (prevents service request starvation).
+     - `sensor_cb_group_` (`MutuallyExclusive`): all incoming sensor & PX4 subscribers.
+   - `CommandSender` uses `std::recursive_mutex` and unlocked internal helper methods to strictly eliminate self-deadlocks.
 
 ---
 

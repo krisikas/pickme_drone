@@ -78,61 +78,21 @@ The system leverages Docker layer caching and multi-stage container specializati
 
 | Container | Purpose | Key Daemons & Nodes | Exposed Ports / Mounts |
 |---|---|---|---|
-| **`pickme-base`** | Common base image | System libraries, compiled message definitions | None (Intermediate build layer) |
-| **`pickme-sim`** | Physics & Autopilot Backend | `gz sim -s -r`, `px4`, `MicroXRCEAgent -p 8888`, `mavlink-routerd` | `5760/tcp` (MAVLink QGC), FastDDS XML, World/Model mounts |
+| **`pickme-base`** | Common base image | System libraries, compiled message definitions (`px4_msgs` v1.16, `pickme_interfaces`) | None (Intermediate build layer) |
+| **`pickme-sim`** | Physics & Autopilot Backend | `gz sim -s -r`, `px4` (v1.16 SITL with optical flow), `MicroXRCEAgent -p 8888`, `mavlink-routerd` | `5760/tcp` (MAVLink QGC), FastDDS XML, World/Model mounts |
 | **`pickme-sim-perception`** | Simulation Sensor Bridge | `ros_gz_bridge parameter_bridge` | `bridge.yaml` config mount |
-| **`pickme-core`** | Mission-Critical Flight Control | `odometry_node`, `offboard_node` | FastDDS XML, shared ROS domain (`ROS_DOMAIN_ID=0`) |
-| **`pickme-perception`** | GPS-Denied Localization & Mapping | `rgbd_odometry`, `rtabmap` SLAM | FastDDS XML |
+| **`pickme-core`** | Mission-Critical Flight Control | `odometry_node`, `offboard_node` (50Hz loop, 20Hz status, 3 callback groups) | FastDDS XML, shared ROS domain (`ROS_DOMAIN_ID=0`) |
+| **`pickme-perception`** | GPS-Denied Localization & Mapping | `rgbd_odometry`, `rtabmap` SLAM | FastDDS XML, `perception_params.yaml` |
 | **`pickme-foxglove`** | Web Dashboard Bridge | `foxglove_bridge` WebSocket daemon | `8765/tcp` (WebSocket streaming) |
 | **`pickme-dev`** | User Code Execution Sandbox | Developer shell, Python SDK, testing tools | `../workspace` $\to$ `/home/developer/workspace` |
 
 ### Detailed Container Specifications
-* **`pickme-core`**: Stable flight core — `pickme_offboard` (state machine, heartbeat, 50Hz setpoints, 20Hz `/pickme/flight_status`) and `pickme_odometry` (PX4 transforms + Visual Odometry $\to$ PX4 EKF2 bridge), launched via `pickme_bringup/launch/core.launch.py`. Runs continuously in background.
-* **`pickme-perception`**: RTAB-Map Visual Odometry (`rgbd_odometry`) and 3D SLAM (`rtabmap`), launched via `pickme_bringup/launch/perception.launch.py`. Isolated from the flight core. Publishes `/visual_odometry` and constructs 3D occupancy maps.
+* **`pickme-core`**: Stable flight core — `pickme_offboard` (state machine, heartbeat, 50Hz setpoints, 20Hz `/pickme/flight_status`) and `pickme_odometry` (PX4 transforms + Visual Odometry $\to$ PX4 EKF2 bridge), launched via `pickme_bringup/launch/core.launch.py`. Runs continuously in background with 3 isolated Callback Groups.
+* **`pickme-perception`**: RTAB-Map Visual Odometry (`rgbd_odometry`) and 3D SLAM (`rtabmap`), launched via `pickme_bringup/launch/perception.launch.py`. Isolated from the flight core. Computes `/visual_odometry` for PX4 EKF2 and constructs 3D occupancy maps using fused `/odom`.
 * **`pickme-foxglove`**: `foxglove_bridge` server on port 8765 for real-time dashboard visualization.
-* **`pickme-dev`**: Interactive developer container with GDB, RQT, and workspace mounted from host for mission development.active dev sandbox    │
-  │ • pickme_odometry (TF2 Broad)│ │ • RTAB-Map 3D SLAM / OctoMap │ │ • Port 8765 (UI Telemetry)   │ │ • GDB, RQT, Teleop tools     │
-  │ • pickme_bringup (Core)      │ │ • False loop-closure filter  │ │ • Zero impact on flight core │ │ • Host workspace volume mount│
-  └──────────────────────────────┘ └──────────────────────────────┘ └──────────────────────────────┘ └──────────────────────────────┘
+* **`pickme-dev`**: Interactive developer container with GDB, RQT, and workspace mounted from host for mission development.
 
-  ┌──────────────────────────────┐ ┌──────────────────────────────┐
-  │         pickme-sim           │ │    pickme-sim-perception     │
-  │ ──────────────────────────── │ │ ──────────────────────────── │
-  │ • Ubuntu 22.04 + gz-harmonic │ │ • ros_gz_bridge              │
-  │ • PX4 SITL v1.15.4 (Headless)│ │ • Parameter bridge (YAML)    │
-  │ • Micro-XRCE-DDS Agent (8888)│ │ • Converts Gazebo RGB/Depth  │
-  │ • MAVLink Router (TCP 5760)  │ │   and PointCloud to ROS 2    │
-  └──────────────────────────────┘ └──────────────────────────────┘
-```
-
-### Container Responsibility Matrix
-
-| Container | Purpose | Key Daemons & Nodes | Exposed Ports / Mounts |
-|---|---|---|---|
-| **`pickme-base`** | Common base image | System libraries, compiled message definitions | None (Intermediate build layer) |
-| **`pickme-sim`** | Physics & Autopilot Backend | `gz sim -s -r`, `px4`, `MicroXRCEAgent -p 8888`, `mavlink-routerd` | `5760/tcp` (MAVLink QGC), FastDDS XML, World/Model mounts |
-| **`pickme-sim-perception`** | Simulation Sensor Bridge | `ros_gz_bridge parameter_bridge` | `bridge.yaml` config mount |
-| **`pickme-core`** | Mission-Critical Flight Control | `odometry_node`, `offboard_node` | FastDDS XML, shared ROS domain (`ROS_DOMAIN_ID=0`) |
-| **`pickme-perception`** | GPS-Denied Localization & Mapping | `rgbd_odometry`, `rtabmap` SLAM | FastDDS XML |
-| **`pickme-foxglove`** | Web Dashboard Bridge | `foxglove_bridge` WebSocket daemon | `8765/tcp` (WebSocket streaming) |
-| **`pickme-dev`** | User Code Execution Sandbox | Developer shell, Python SDK, testing tools | `../workspace` $\to$ `/home/developer/workspace` |
-=======
-### 3.3 `pickme-core`
-- **Содержимое**: Стабильный полетный базис — `pickme_offboard` и `pickme_odometry` (включая мост Visual Odometry $\to$ PX4 EKF2 и публикацию TF `odom -> base_link`), запускаемые через `pickme_bringup/launch/core.launch.py`.
-- **Правило**: Работает непрерывно в фоне. Защищен от внешних падений.
-
-### 3.4 `pickme-perception`
-- **Содержимое**: RTAB-Map Visual Odometry (`rgbd_odometry`) и 3D SLAM (`rtabmap`), запускаемые через `pickme_bringup/launch/perception.launch.py`.
-- **Правило**: Изолирован от полетного контура. Публикует `/visual_odometry`, опционально строит карту занятости и облака точек.
-
-### 3.5 `pickme-foxglove`
-- **Содержимое**: Сервер `foxglove_bridge` (порт 8765).
-- **Правило**: Автоматически стартует в `compose.sim.yaml` для мгновенной отладки в Foxglove Studio, но полностью изолирован от полетного ядра `core`.
-
-### 3.6 `pickme-dev`
-- **Содержимое**: Инструменты разработчика (`gdb`, `rqt`, `tmux`, `teleop`).
-- **Правило**: Директория `workspace/` или `src/` монтируется через Docker Volume. Разработчик пишет миссии и тестирует код на лету.
->>>>>>> rtab_map
+---
 
 ---
 
@@ -241,7 +201,7 @@ src/
     │   └── foxglove.launch.py         # Launches foxglove_bridge server
     └── config/
         ├── core_params.yaml           # Centralized flight dynamics, geofence, and frame parameters
-        └── perception.yaml            # RTAB-Map feature extraction and graph optimizer parameters
+        └── perception_params.yaml     # RTAB-Map feature extraction, VO, and SLAM parameters
 ```
 
 ---
@@ -257,7 +217,7 @@ PickmeDrone implements exact, closed-form geometric and quaternion transformatio
 ```text
                              map (Global Earth-Fixed Frame)
                               │
-                              ▼
+                              ▼ [RTAB-Map SLAM: Loop Closure / Map Optimization]
                              odom (Continuous World Frame — ENU)
                               │
                               ▼ [Dynamic /tf from PX4 VehicleOdometry]
@@ -342,51 +302,56 @@ $$z_{\text{ros}} = \frac{\sqrt{2}}{2} (w_{\text{px4}} - z_{\text{px4}})$$
 * **Deterministic Synchronicity:** PX4 failsafes require that the Offboard Heartbeat (10 Hz) and Setpoints (50 Hz) are continuously fed without phase lag. Splitting them into separate processes introduces DDS inter-process scheduling jitter.
 * **Zero-Copy State Validation:** `SafetyGuard`, `TrajectoryTracker`, and `CommandSender` evaluate vehicle state in the same thread cycle without message deserialization overhead.
 
+### 6.3 Multi-Threaded Concurrency & Callback Group Isolation
+To guarantee $<1\text{ ms}$ service responsiveness without blocking high-rate control loops, `OffboardNode` isolates workloads across 3 dedicated Callback Groups executing on a `MultiThreadedExecutor`:
+* **`timer_cb_group_` (`MutuallyExclusive`):** Schedules the 50 Hz `control_loop` and 20 Hz `status_publish_loop`.
+* **`service_cb_group_` (`Reentrant`):** Handles all asynchronous service invocations (`/pickme/arm`, `/pickme/offboard`, `/pickme/takeoff`, `/pickme/land`, `/pickme/navigate`, etc.) concurrently without starvation.
+* **`sensor_cb_group_` (`MutuallyExclusive`):** Processes incoming PX4 telemetry subscriptions (`vehicle_status`, `vehicle_odometry`, `battery_status`, `command_ack`).
+* **Thread Safety:** `CommandSender` employs `std::recursive_mutex` and unlocked internal helpers to prevent self-deadlocks.
+
 ---
 
 ## 7. GPS-Denied Perception & Visual SLAM
 
-In indoor and GPS-denied environments, the drone achieves autonomous localization by fusing high-rate **RGB-D Visual Odometry** with PX4's 24-state **Extended Kalman Filter (EKF2)**.
+In indoor and GPS-denied environments, the drone achieves robust localization and mapping by fusing high-rate **RGB-D Visual Odometry** with PX4's 24-state **Extended Kalman Filter (EKF2)** and **RTAB-Map SLAM**:
 
 ```text
  ┌──────────────────────┐   /camera/color/image_raw (RGB)
  │  RealSense D435 /    │   /camera/depth/image_rect_raw (Depth)
- │  OakD-Lite (Gazebo)  │────────────────────────────────────────┐
- └──────────────────────┘                                        │
-                                                                 ▼
-                                                 ┌──────────────────────────────┐
-                                                 │     rtabmap_odom Node        │
-                                                 │ • ORB Feature Extractor      │
-                                                 │ • Frame-to-Map Matcher       │
-                                                 │ • Optical flow motion guess  │
-                                                 └──────────────┬───────────────┘
-                                                                │ /visual_odometry (nav_msgs/Odometry)
-                                                                ▼
-                                                 ┌──────────────────────────────┐
-                                                 │     OdometryNode Bridge      │
+ │  OakD-Lite (Gazebo)  │────────────────────────────────────────┬───────────────────────────────────────┐
+ └──────────────────────┘                                        │                                       │
+                                                                 ▼                                       ▼
+                                                 ┌──────────────────────────────┐        ┌──────────────────────────────┐
+                                                 │     rtabmap_odom Node        │        │      rtabmap (SLAM Node)     │
+                                                 │ • GFTT / BRIEF Keypoints     │        │ • 3D Voxel OctoMap Mapping   │
+                                                 │ • 3D-2D PnP Motion Estimation│        │ • Loop Closure Verification  │
+                                                 └──────────────┬───────────────┘        │ • Consumes fused /odom       │
+                                                                │ /visual_odometry       └──────────────┬───────────────┘
+                                                                ▼                                       │
+                                                 ┌──────────────────────────────┐                       ▼
+                                                 │     OdometryNode Bridge      │              TF: map -> odom
                                                  │ (Converts ROS ENU -> PX4 NED)│
                                                  └──────────────┬───────────────┘
                                                                 │ /fmu/in/vehicle_visual_odometry
                                                                 ▼
                                                  ┌──────────────────────────────┐
                                                  │       PX4 EKF2 Estimator     │
-                                                 │ • Fuses IMU + Baro + VO      │
-                                                 │ • EKF2_EV_CTRL = 15          │
-                                                 │ • EKF2_GPS_CTRL = 0          │
+                                                 │ • Fuses IMU + Flow + VO      │
+                                                 │ • High-rate 50Hz VIO state   │
                                                  └──────────────┬───────────────┘
                                                                 │ /fmu/out/vehicle_odometry
                                                                 ▼
                                                  ┌──────────────────────────────┐
                                                  │     Dynamic TF Broadcaster   │
                                                  │ • Broadcasts odom->base_link │
-                                                 │ • Publishes /odom topic      │
+                                                 │ • Publishes /odom topic ─────┼───────────────────────┘
                                                  └──────────────────────────────┘
 ```
 
 ### 7.1 RTAB-Map Configuration Parameters
-* **Feature Detector:** ORB (`Vis/FeatureType: 8`, 400 features/frame).
-* **Anti-Drift Filter:** Rejects floor noise with `Vis/MinInliers: 20` and `RGBD/OptimizeMaxError: 1.5m`.
-* **3D Occupancy Grid:** Ray-traced 3D voxel grid (`Grid/3D: true`, 5 cm voxel resolution) detecting obstacles from $0.3\text{ m}$ to $5.0\text{ m}$ in real time.
+* **Feature Detector:** GFTT/BRIEF (`Vis/FeatureType: 6`) with 3D-2D PnP motion estimation (`Vis/EstimationType: 1`) for reliable tracking on low-texture surfaces.
+* **Anti-Drift Filter:** Rejects floor noise with `Vis/MinInliers: 15` and `RGBD/OptimizeMaxError: 1.5m`.
+* **3D Occupancy Grid:** Ray-traced 3D voxel grid (`Grid/3D: true`, 5 cm voxel resolution) with normal vector ground plane segmentation (`Grid/NormalsSegmentation: true`).
 
 ---
 
