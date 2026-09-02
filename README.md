@@ -183,8 +183,9 @@ The root `Makefile` provides streamlined commands for the entire lifecycle:
 
 | Service | Type | Description | Example CLI Call |
 |---|---|---|---|
-| `/pickme/arm` | `std_srvs/srv/Trigger` | Arms the vehicle motors. | `ros2 service call /pickme/arm std_srvs/srv/Trigger {}` |
+| `/pickme/arm` | `std_srvs/srv/Trigger` | Arms vehicle motors, initializes setpoint stream, and engages Offboard mode. | `ros2 service call /pickme/arm std_srvs/srv/Trigger {}` |
 | `/pickme/disarm` | `std_srvs/srv/Trigger` | Disarms motors and cancels active trajectory. | `ros2 service call /pickme/disarm std_srvs/srv/Trigger {}` |
+| `/pickme/offboard` | `std_srvs/srv/Trigger` | Explicitly switches flight mode to PX4 Offboard. | `ros2 service call /pickme/offboard std_srvs/srv/Trigger {}` |
 | `/pickme/takeoff` | `std_srvs/srv/Trigger` | Arms, engages offboard mode, and climbs to default altitude. | `ros2 service call /pickme/takeoff std_srvs/srv/Trigger {}` |
 | `/pickme/land` | `std_srvs/srv/Trigger` | Dispatches autonomous landing command to PX4. | `ros2 service call /pickme/land std_srvs/srv/Trigger {}` |
 | `/pickme/navigate` | `pickme_interfaces/srv/Navigate` | Navigates to $(x, y, z, \text{yaw})$ at specific speed in any frame. | `ros2 service call /pickme/navigate pickme_interfaces/srv/Navigate "{x: 2.0, y: 1.0, z: 2.0, yaw: 0.0, speed: 0.8, frame_id: 'odom', auto_arm: false}"` |
@@ -210,7 +211,7 @@ The offboard node continuously publishes 20 Hz state machine and telemetry diagn
 * `state`: High-level flight state (`DISARMED`, `ARMING`, `ARMED`, `TAKEOFF`, `NAVIGATING`, `HOVERING`, `LANDING`, `EMERGENCY`).
 * `target_reached`: Real closed-loop arrival flag evaluated against physical drone position & velocity.
 * `remaining_distance`: Euclidean distance to active waypoint (meters).
-* `battery_voltage` & `battery_remaining`: Real-time power metrics from PX4.
+* `battery_voltage` & `battery_percentage`: Real-time power metrics from PX4.
 * `nav_state_str`: Raw PX4 navigation mode (`OFFBOARD`, `POSCTL`, `AUTO_LAND`, etc.).
 
 ---
@@ -307,11 +308,11 @@ Both simulated depth cameras (`OakD-Lite` / `RealSense D435`) and physical hardw
 | `/odom` | `nav_msgs/msg/Odometry` | Fused state odometry from PX4 EKF2 in ENU coordinates. |
 
 ### Visual SLAM Configuration
-The perception stack runs **RTAB-Map RGB-D Odometry** with:
-* **ORB Feature Matching** (`Vis/FeatureType: 8`, 400 features per frame).
-* **Frame-to-Map Motion Estimation** for smooth tracking over feature-sparse terrains.
-* **Strict False Loop-Closure Rejection** (`Vis/MinInliers: 20`, `RGBD/OptimizeMaxError: 1.5m`) preventing drift on repetitive carpet/tile textures.
-* **Direct EKF2 Fusion** (`EKF2_EV_CTRL = 15`) sending `/visual_odometry` into PX4's EKF2 over `/fmu/in/vehicle_visual_odometry`.
+The perception stack runs **RTAB-Map RGB-D Odometry & 3D SLAM** with:
+* **GFTT / BRIEF Feature Extraction** (`Vis/FeatureType: 6`) with **3D-2D PnP Estimation** (`Vis/EstimationType: 1`) for robust tracking on low-texture surfaces.
+* **Direct EKF2 VIO Fusion:** `/visual_odometry` is bridged into PX4's EKF2 over `/fmu/in/vehicle_visual_odometry`, producing high-frequency, jitter-free `/odom` (50 Hz).
+* **3D Occupancy Grid & Loop Closure:** RTAB-Map SLAM subscribes to fused `/odom` and publishes global TF `map -> odom`, building ray-traced 3D voxel occupancy grids with normal-vector ground segmentation.
+* **Strict False Loop-Closure Rejection** (`Vis/MinInliers: 15`, `RGBD/OptimizeMaxError: 1.5m`) preventing map tearing on repetitive surfaces.
 
 ---
 
