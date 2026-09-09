@@ -16,12 +16,14 @@ ENV LC_ALL=C.UTF-8
 RUN apt-get update && apt-get install -y \
     git wget curl \
     python3-pip python3-rosdep python3-colcon-common-extensions \
-    ros-humble-desktop \
+    ros-humble-rtabmap-msgs \
+    ros-humble-realsense2-camera-msgs \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Build px4_msgs into /opt/ros/humble overlay ──
+ARG PX4_MSGS_BRANCH=release/1.16
 RUN mkdir -p /tmp/px4_ws/src && \
-    git clone -b release/1.16 https://github.com/PX4/px4_msgs.git /tmp/px4_ws/src/px4_msgs && \
+    git clone -b ${PX4_MSGS_BRANCH} https://github.com/PX4/px4_msgs.git /tmp/px4_ws/src/px4_msgs && \
     /bin/bash -c "source /opt/ros/humble/setup.bash && \
         cd /tmp/px4_ws && \
         colcon build --install-base /opt/ros/humble --merge-install" && \
@@ -41,6 +43,10 @@ ARG USER_GID=$USER_UID
 
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /bin/bash \
+    && groupadd -f video \
+    && groupadd -f dialout \
+    && groupadd -f plugdev \
+    && usermod -aG sudo,video,dialout,plugdev $USERNAME \
     && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 

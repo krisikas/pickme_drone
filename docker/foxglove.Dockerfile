@@ -13,16 +13,18 @@ RUN apt-get update && apt-get install -y \
     ros-humble-foxglove-bridge \
     && rm -rf /var/lib/apt/lists/*
 
-COPY src/pickme_bringup /tmp/foxglove_ws/src/pickme_bringup
+# ── Workspace Setup & Build ──
+WORKDIR /ws
+COPY --chown=developer:developer src/pickme_bringup /ws/src/pickme_bringup
+RUN chown -R developer:developer /ws
 
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
-        cd /tmp/foxglove_ws && \
-        colcon build --install-base /opt/ros/humble --merge-install" && \
-    rm -rf /tmp/foxglove_ws
+    cd /ws && colcon build --symlink-install \
+        --packages-select pickme_bringup"
 
 USER developer
 WORKDIR /home/developer
 
 EXPOSE 8765
 
-CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch pickme_bringup foxglove.launch.py"]
+CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi && source /ws/install/setup.bash && exec ros2 launch pickme_bringup foxglove.launch.py"]

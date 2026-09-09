@@ -26,14 +26,14 @@ RUN echo "/opt/ros/humble/lib" > /etc/ld.so.conf.d/ros.conf && \
     echo "/opt/ros/humble/lib/x86_64-linux-gnu" >> /etc/ld.so.conf.d/ros.conf && \
     ldconfig
 
-# ── Copy and build pickme_bringup ──
-COPY src/pickme_bringup /tmp/perception_ws/src/pickme_bringup
+# ── Workspace Setup & Build ──
+WORKDIR /ws
+COPY --chown=developer:developer src/pickme_bringup /ws/src/pickme_bringup
+RUN chown -R developer:developer /ws
 
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
-        cd /tmp/perception_ws && \
-        colcon build --install-base /opt/ros/humble --merge-install \
-            --packages-select pickme_bringup" && \
-    rm -rf /tmp/perception_ws && \
+    cd /ws && colcon build --symlink-install \
+        --packages-select pickme_bringup" && \
     ldconfig
 
 USER developer
@@ -41,4 +41,4 @@ WORKDIR /home/developer
 
 ENV LD_LIBRARY_PATH=/opt/ros/humble/lib:/opt/ros/humble/lib/aarch64-linux-gnu:/opt/ros/humble/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
 
-CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch pickme_bringup perception.launch.py"]
+CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi && source /ws/install/setup.bash && exec ros2 launch pickme_bringup perception.launch.py"]

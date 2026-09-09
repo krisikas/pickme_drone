@@ -60,9 +60,10 @@ private:
 
   double cam_x_, cam_y_, cam_z_;
   double cam_roll_, cam_pitch_, cam_yaw_;
-  bool publish_camera_tf_;
-  bool publish_odom_;
-  bool enable_vo_bridge_;
+  bool use_sim_time_{false};
+  bool publish_camera_tf_{true};
+  bool publish_odom_{true};
+  bool enable_vo_bridge_{true};
   std::string odom_topic_;
   std::string vo_topic_;
 

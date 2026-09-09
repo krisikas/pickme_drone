@@ -1,0 +1,191 @@
+# ============================================================================
+# compose.radxa.yaml — Real Hardware Deployment Stack (Radxa ROCK 5C)
+# ============================================================================
+# Architecture:
+#   fcu         → Micro-XRCE-DDS Agent + MAVLink Router (UART /dev/ttyS0 or USB)
+#   camera      → Physical depth camera driver (RealSense / Oak-D over USB 3.0)
+#   core        → Offboard controller, TF2 dynamic publisher & VO bridge
+#   perception  → RTAB-Map Visual Odometry & 3D SLAM
+#   foxglove    → WebSocket bridge on port 8765 for wireless GCS telemetry
+#   dev         → Sandbox for autonomous Python mission execution
+# ============================================================================
+
+name: pickme_drone_radxa
+
+services:
+  # ── 1. Flight Controller (FCU) Hardware Bridge ─────────────────────────────
+  fcu:
+    container_name: pickme-fcu
+    image: pickme-fcu
+    build:
+      context: ..
+      dockerfile: docker/fcu.Dockerfile
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    privileged: true
+    entrypoint: ["/bin/bash", "/usr/local/bin/fcu-entrypoint.sh"]
+    env_file:
+      - ../.env
+    devices:
+      - "${FCU_DEVICE:-/dev/ttyS0}:${FCU_DEVICE:-/dev/ttyS0}"
+    environment:
+      - FCU_DEVICE=${FCU_DEVICE:-/dev/ttyS0}
+      - FCU_BAUD=${FCU_BAUD:-921600}
+      - ENABLE_MAVLINK_ROUTER=${ENABLE_MAVLINK_ROUTER:-false}
+      - MAVLINK_DEVICE=${MAVLINK_DEVICE:-/dev/ttyACM0}
+      - MAVLINK_BAUD=${MAVLINK_BAUD:-921600}
+      - MAVLINK_TCP_PORT=${MAVLINK_TCP_PORT:-5760}
+      - MAVLINK_QGC_IP=${MAVLINK_QGC_IP:-10.42.0.255}
+      - MAVLINK_QGC_PORT=${MAVLINK_QGC_PORT:-14550}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/etc/pickme/fastdds.xml
+    volumes:
+      - ../docker/fastdds.xml:/etc/pickme/fastdds.xml:ro
+      - ../docker/fcu-entrypoint.sh:/usr/local/bin/fcu-entrypoint.sh:ro
+
+  # ── 2. Real Depth Camera Driver ────────────────────────────────────────────
+  camera:
+    container_name: pickme-camera
+    image: pickme-camera
+    build:
+      context: ..
+      dockerfile: docker/camera.Dockerfile
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    privileged: true
+    cpuset: "${CAMERA_CPUSET:-4,5}"
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=false
+      - CAMERA_TYPE=${CAMERA_TYPE:-realsense}
+      - RGB_WIDTH=${RGB_WIDTH:-640}
+      - RGB_HEIGHT=${RGB_HEIGHT:-480}
+      - RGB_FPS=${RGB_FPS:-30}
+      - DEPTH_WIDTH=${DEPTH_WIDTH:-640}
+      - DEPTH_HEIGHT=${DEPTH_HEIGHT:-480}
+      - DEPTH_FPS=${DEPTH_FPS:-30}
+    volumes:
+      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/camera/build:/ws/build
+      - ../workspace/camera/install:/ws/install
+      - ../workspace/camera/log:/ws/log
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup camera.launch.py"
+
+  # ── 3. Mission-Critical Flight Core ────────────────────────────────────────
+  core:
+    container_name: pickme-core
+    image: pickme-core
+    build:
+      context: ..
+      dockerfile: docker/core.Dockerfile
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    cpuset: "${CORE_CPUSET:-4,5,6,7}"
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=false
+      - PUBLISH_CAMERA_TF=false
+      - LAUNCH_OFFBOARD=${LAUNCH_OFFBOARD:-false}
+    volumes:
+      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_odometry:/ws/src/pickme_odometry
+      - ../src/pickme_offboard:/ws/src/pickme_offboard
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/core/build:/ws/build
+      - ../workspace/core/install:/ws/install
+      - ../workspace/core/log:/ws/log
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup core.launch.py"
+    depends_on:
+      - fcu
+
+  # ── 4. RTAB-Map Visual Odometry & 3D SLAM ─────────────────────────────────
+  perception:
+    container_name: pickme-perception
+    image: pickme-perception
+    build:
+      context: ..
+      dockerfile: docker/perception.Dockerfile
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    cpuset: "${PERCEPTION_CPUSET:-6,7}"
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=false
+      - SLAM_ENABLE=${SLAM_ENABLE:-false}
+    volumes:
+      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/perception/build:/ws/build
+      - ../workspace/perception/install:/ws/install
+      - ../workspace/perception/log:/ws/log
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup perception.launch.py"
+    depends_on:
+      - core
+      - camera
+
+  # ── 5. Foxglove WebSocket Telemetry Bridge ─────────────────────────────────
+  foxglove:
+    container_name: pickme-foxglove
+    image: pickme-foxglove
+    build:
+      context: ..
+      dockerfile: docker/foxglove.Dockerfile
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=false
+      - FOXGLOVE_PORT=${FOXGLOVE_PORT:-8765}
+    volumes:
+      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup foxglove.launch.py"
+    depends_on:
+      - core
+
+  # ── 6. Autonomous Mission Sandbox ──────────────────────────────────────────
+  dev:
+    container_name: pickme-dev
+    image: pickme-dev
+    build:
+      context: ..
+      dockerfile: docker/dev.Dockerfile
+    network_mode: host
+    ipc: host
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
+      - USE_SIM_TIME=false
+    volumes:
+      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../workspace/dev:/home/developer/workspace
+    depends_on:
+      - core

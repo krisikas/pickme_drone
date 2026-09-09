@@ -9,6 +9,7 @@ namespace pickme_odometry {
 OdometryNode::OdometryNode(const rclcpp::NodeOptions & options)
 : Node("odometry_node", options) {
   // === Parameter Declarations ===
+  use_sim_time_ = this->get_parameter_or("use_sim_time", false);
   odom_frame_ = this->declare_parameter<std::string>("odom_frame", "odom");
   base_frame_ = this->declare_parameter<std::string>("base_frame", "base_link");
   body_frame_ = this->declare_parameter<std::string>("body_frame", "body");
@@ -278,7 +279,13 @@ void OdometryNode::handle_visual_odometry(const nav_msgs::msg::Odometry::SharedP
   // 4. Construct PX4 VehicleOdometry Message
   px4_msgs::msg::VehicleOdometry px4_vo;
   px4_vo.timestamp = this->get_clock()->now().nanoseconds() / 1000ULL;
-  px4_vo.timestamp_sample = msg->header.stamp.sec * 1000000ULL + msg->header.stamp.nanosec / 1000ULL;
+
+  if (use_sim_time_) {
+    px4_vo.timestamp_sample = msg->header.stamp.sec * 1000000ULL + msg->header.stamp.nanosec / 1000ULL;
+  } else {
+    px4_vo.timestamp_sample = 0;
+  }
+
   px4_vo.pose_frame = px4_msgs::msg::VehicleOdometry::POSE_FRAME_NED;
 
   px4_vo.position[0] = pos_x_ned;

@@ -16,18 +16,18 @@ RUN apt-get update && apt-get install -y \
     ros-humble-tf2-geometry-msgs \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Copy and build stable core packages ──
-COPY src/pickme_odometry /tmp/core_ws/src/pickme_odometry
-COPY src/pickme_offboard /tmp/core_ws/src/pickme_offboard
-COPY src/pickme_bringup /tmp/core_ws/src/pickme_bringup
+# ── Workspace Setup & Build ──
+WORKDIR /ws
+COPY --chown=developer:developer src/pickme_odometry /ws/src/pickme_odometry
+COPY --chown=developer:developer src/pickme_offboard /ws/src/pickme_offboard
+COPY --chown=developer:developer src/pickme_bringup /ws/src/pickme_bringup
+RUN chown -R developer:developer /ws
 
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && \
-        cd /tmp/core_ws && \
-        colcon build --install-base /opt/ros/humble --merge-install \
-            --packages-select pickme_odometry pickme_offboard pickme_bringup" && \
-    rm -rf /tmp/core_ws
+    cd /ws && colcon build --symlink-install \
+        --packages-select pickme_odometry pickme_offboard pickme_bringup"
 
 USER developer
 WORKDIR /home/developer
 
-CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch pickme_bringup core.launch.py"]
+CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi && source /ws/install/setup.bash && exec ros2 launch pickme_bringup core.launch.py"]
