@@ -138,7 +138,6 @@ sync:
 		--exclude 'workspace/*/build' --exclude 'workspace/*/install' --exclude 'workspace/*/log' \
 		--exclude 'workspace/build' --exclude 'workspace/install' --exclude 'workspace/log' \
 		./ $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/
-	@ssh $(DRONE_USER)@$(DRONE_IP) "chmod +x ~/pickme_drone/docker/fcu-entrypoint.sh 2>/dev/null || true; ln -sf ../.env ~/pickme_drone/compose/.env 2>/dev/null || true"
 	@echo "--> Project tree synced."
 
 # ── ROS 2 In-Container Builds (Root -> Host Volumes) ──

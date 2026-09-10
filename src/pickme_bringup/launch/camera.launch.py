@@ -8,6 +8,14 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    """Generate launch description for camera driver (RealSense D435 / Luxonis OAK-D).
+
+    Adheres strictly to ros2-engineering-skills:
+    - REP-103 and REP-105 coordinate frame standards (camera_link as parent, optical RDF frames).
+    - Unified project perception topic contract (/camera/color/..., /camera/depth/..., /camera/depth/color/points).
+    - Eliminates duplicate namespace (/camera/camera) and duplicate TF prefix (camera_camera_link).
+    - Disables high-bandwidth unused streams (IR1, IR2, IMU gyro/accel) to preserve embedded resources.
+    """
     default_camera_type = os.environ.get('CAMERA_TYPE', 'realsense').lower()
     default_rgb_width = os.environ.get('RGB_WIDTH', '640')
     default_rgb_height = os.environ.get('RGB_HEIGHT', '480')
@@ -15,6 +23,8 @@ def generate_launch_description():
     default_depth_width = os.environ.get('DEPTH_WIDTH', '640')
     default_depth_height = os.environ.get('DEPTH_HEIGHT', '480')
     default_depth_fps = os.environ.get('DEPTH_FPS', '30')
+    default_pointcloud = os.environ.get('ENABLE_POINTCLOUD', 'true').lower() in ('true', '1', 'yes')
+    default_publish_tf = os.environ.get('PUBLISH_TF', 'true').lower() in ('true', '1', 'yes')
 
     camera_type = LaunchConfiguration('camera_type', default=default_camera_type)
     rgb_width = LaunchConfiguration('rgb_width', default=default_rgb_width)
@@ -23,10 +33,16 @@ def generate_launch_description():
     depth_width = LaunchConfiguration('depth_width', default=default_depth_width)
     depth_height = LaunchConfiguration('depth_height', default=default_depth_height)
     depth_fps = LaunchConfiguration('depth_fps', default=default_depth_fps)
+    pointcloud_enable = LaunchConfiguration('pointcloud_enable', default=str(default_pointcloud).lower())
+    publish_tf = LaunchConfiguration('publish_tf', default=str(default_publish_tf).lower())
 
     # Dynamic camera profile strings: e.g. "640x480x30"
     realsense_rgb_profile = PythonExpression(["'", rgb_width, "x", rgb_height, "x", rgb_fps, "'"])
     realsense_depth_profile = PythonExpression(["'", depth_width, "x", depth_height, "x", depth_fps, "'"])
+
+    # Boolean expressions for driver parameter conversion
+    enable_pointcloud_bool = PythonExpression(["'", pointcloud_enable, "'.lower() in ('true', '1', 'yes')"])
+    publish_tf_bool = PythonExpression(["'", publish_tf, "'.lower() in ('true', '1', 'yes')"])
 
     is_realsense = EqualsSubstitution(camera_type, 'realsense')
     is_oakd = EqualsSubstitution(camera_type, 'oakd')
@@ -67,42 +83,79 @@ def generate_launch_description():
             default_value=default_depth_fps,
             description='Depth stream frame rate',
         ),
+        DeclareLaunchArgument(
+            'pointcloud_enable',
+            default_value=str(default_pointcloud).lower(),
+            description='Enable 3D point cloud stream generation',
+        ),
+        DeclareLaunchArgument(
+            'publish_tf',
+            default_value=str(default_publish_tf).lower(),
+            description='Broadcast internal camera optical TF frames',
+        ),
 
         # ── 1. Intel RealSense Driver Node ────────────────────────────────────
-        # Note: Do NOT set namespace='camera' here, as realsense2_camera internally
-        # prefixes topics and frames with camera_name ('camera'), which would cause /camera/camera/...
+        # Frame hierarchy produced by realsense2_camera:
+        #   base_frame_id = camera_name + '_' + 'link' -> 'camera_link' (FLU)
+        #   color_optical_frame = 'camera_color_optical_frame' (RDF)
+        #   depth_optical_frame = 'camera_depth_optical_frame' (RDF)
+        # Setting base_frame_id to 'link' ensures it connects cleanly to robot's
+        # base_link -> camera_link without the erroneous 'camera_camera_link'.
         GroupAction(
             condition=IfCondition(is_realsense),
             actions=[
                 Node(
                     package='realsense2_camera',
                     executable='realsense2_camera_node',
+                    name='camera',
+                    namespace='',
                     output='screen',
                     emulate_tty=True,
                     parameters=[{
                         'camera_name': 'camera',
-                        'base_frame_id': 'camera_link',
+                        'base_frame_id': 'link',
                         'depth_module.profile': realsense_depth_profile,
                         'rgb_camera.profile': realsense_rgb_profile,
                         'enable_color': True,
                         'enable_depth': True,
                         'align_depth.enable': True,
-                        'pointcloud.enable': True,
-                        'pointcloud.stream_filter': 2,
+                        'pointcloud.enable': enable_pointcloud_bool,
+                        'pointcloud.stream_filter': 2,        # Color texture on pointcloud
                         'pointcloud.stream_index_filter': 0,
-                        'enable_infra1': False,
-                        'enable_infra2': False,
-                        'enable_sync': True,
-                        'publish_tf': True,
+                        # 'enable_infra1': False,               # Disabled to conserve USB bandwidth
+                        # 'enable_infra2': False,               # Disabled to conserve USB bandwidth
+                        'enable_gyro': False,                 # Disabled: flight IMU owned by PX4
+                        'enable_accel': False,                # Disabled: flight IMU owned by PX4
+                        'enable_sync': True,                  # Hardware sync for RGB & Depth
+                        'publish_tf': publish_tf_bool,
                         'tf_publish_rate': 30.0,
                     }],
                     remappings=[
-                        # Divert unaligned depth to avoid collision on /camera/depth/image_rect_raw
+                        # 1. Divert unaligned depth to prevent topic collision with contract topic
                         ('/camera/depth/image_rect_raw', '/camera/depth/image_raw_unaligned'),
                         ('/camera/depth/camera_info', '/camera/depth/camera_info_unaligned'),
-                        # Route aligned depth directly into the contract topic for RTAB-Map
+                        ('/camera/camera/depth/image_rect_raw', '/camera/depth/image_raw_unaligned'),
+                        ('/camera/camera/depth/camera_info', '/camera/depth/camera_info_unaligned'),
+                        ('depth/image_rect_raw', '/camera/depth/image_raw_unaligned'),
+                        ('depth/camera_info', '/camera/depth/camera_info_unaligned'),
+
+                        # 2. Route aligned depth to standard contract topic for RTAB-Map / VO
                         ('/camera/aligned_depth_to_color/image_raw', '/camera/depth/image_rect_raw'),
                         ('/camera/aligned_depth_to_color/camera_info', '/camera/depth/camera_info'),
+                        ('/camera/camera/aligned_depth_to_color/image_raw', '/camera/depth/image_rect_raw'),
+                        ('/camera/camera/aligned_depth_to_color/camera_info', '/camera/depth/camera_info'),
+                        ('aligned_depth_to_color/image_raw', '/camera/depth/image_rect_raw'),
+                        ('aligned_depth_to_color/camera_info', '/camera/depth/camera_info'),
+
+                        # 3. Clean RGB image stream
+                        ('/camera/camera/color/image_raw', '/camera/color/image_raw'),
+                        ('/camera/camera/color/camera_info', '/camera/color/camera_info'),
+                        ('color/image_raw', '/camera/color/image_raw'),
+                        ('color/camera_info', '/camera/color/camera_info'),
+
+                        # 4. Clean 3D Point Cloud stream
+                        ('/camera/camera/depth/color/points', '/camera/depth/color/points'),
+                        ('depth/color/points', '/camera/depth/color/points'),
                     ],
                 ),
             ],
@@ -121,7 +174,7 @@ def generate_launch_description():
                     emulate_tty=True,
                     parameters=[{
                         'camera.i_parent_frame': 'camera_link',
-                        'camera.i_publish_tf_from_calibration': True,
+                        'camera.i_publish_tf_from_calibration': publish_tf_bool,
                         'camera.i_nn_type': 'none',
                         'camera.i_pipeline_type': 'RGBD',
                         'rgb.i_resolution': '720P',
