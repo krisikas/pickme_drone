@@ -114,20 +114,29 @@ def generate_launch_description():
                     parameters=[{
                         'camera_name': 'camera',
                         'base_frame_id': 'link',
+                        # RealSense ROS v4.58+ parameter names
+                        'depth_module.depth_profile': realsense_depth_profile,
+                        'rgb_camera.color_profile': realsense_rgb_profile,
+                        # Backwards compatibility aliases
                         'depth_module.profile': realsense_depth_profile,
                         'rgb_camera.profile': realsense_rgb_profile,
+
                         'enable_color': True,
                         'enable_depth': True,
                         'align_depth.enable': True,
-                        'pointcloud.enable': enable_pointcloud_bool,
+                        # Pointcloud parameters: support both x86 ('pointcloud.*') and ARM64 NEON ('pointcloud__neon_.*')
+                        'pointcloud.enable': pointcloud_enable,
+                        'pointcloud__neon_.enable': pointcloud_enable,
                         'pointcloud.stream_filter': 2,        # Color texture on pointcloud
+                        'pointcloud__neon_.stream_filter': 2,
                         'pointcloud.stream_index_filter': 0,
-                        # 'enable_infra1': False,               # Disabled to conserve USB bandwidth
-                        # 'enable_infra2': False,               # Disabled to conserve USB bandwidth
+                        'pointcloud__neon_.stream_index_filter': 0,
+                        'enable_infra1': False,               # Disabled to conserve USB bandwidth
+                        'enable_infra2': False,               # Disabled to conserve USB bandwidth
                         'enable_gyro': False,                 # Disabled: flight IMU owned by PX4
                         'enable_accel': False,                # Disabled: flight IMU owned by PX4
                         'enable_sync': True,                  # Hardware sync for RGB & Depth
-                        'publish_tf': publish_tf_bool,
+                        'publish_tf': True,
                         'tf_publish_rate': 30.0,
                     }],
                     remappings=[
@@ -156,6 +165,8 @@ def generate_launch_description():
                         # 4. Clean 3D Point Cloud stream
                         ('/camera/camera/depth/color/points', '/camera/depth/color/points'),
                         ('depth/color/points', '/camera/depth/color/points'),
+                        ('camera/depth/color/points', '/camera/depth/color/points'),
+                        ('pointcloud', '/camera/depth/color/points'),
                     ],
                 ),
             ],

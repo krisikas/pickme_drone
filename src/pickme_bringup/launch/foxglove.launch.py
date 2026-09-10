@@ -34,7 +34,7 @@ def generate_launch_description():
                 'port': port,
                 'use_sim_time': use_sim_time,
                 'send_buffer_limit': 100000000,
-                'use_compression': True,
+                'use_compression': False,  # Disabled: software zlib chokes weak Cortex-A55 cores on ARM SBC
             }],
         ),
     ])

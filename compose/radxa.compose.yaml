@@ -23,6 +23,7 @@ services:
     network_mode: host
     ipc: host
     restart: unless-stopped
+    cpuset: "${FCU_CPUSET:-2}"
     privileged: true
     entrypoint: ["/bin/bash", "/usr/local/bin/fcu-entrypoint.sh"]
     env_file:
@@ -69,6 +70,7 @@ services:
       - DEPTH_WIDTH=${DEPTH_WIDTH:-640}
       - DEPTH_HEIGHT=${DEPTH_HEIGHT:-480}
       - DEPTH_FPS=${DEPTH_FPS:-30}
+      - ENABLE_POINTCLOUD=${ENABLE_POINTCLOUD:-true}
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_bringup:/ws/src/pickme_bringup
@@ -155,6 +157,7 @@ services:
     network_mode: host
     ipc: host
     restart: unless-stopped
+    cpuset: "${FOXGLOVE_CPUSET:-3}"
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
