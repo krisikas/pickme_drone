@@ -53,9 +53,9 @@ help:
 	@echo "  Full Image Build & Deploy (Heavy, only needed on new system apt packages):"
 	@echo "    make build-base-real  - Build ARM64 base image with px4_msgs $(PX4_MSGS_BRANCH_REAL)"
 	@echo "    make build-real       - Build all ARM64 hardware Docker images for $(BOARD)"
-	@echo "    make save-real        - Compress and save hardware images to docker_save/$(BOARD).tar.gz"
-	@echo "    make push-save        - Copy archive to drone, uncompress and docker load"
-	@echo "    make push-real        - Full deploy pipeline (save-real + push-save)"
+	@echo "    make push-images      - Copy docker images to drone, uncompress and load"
+	@echo ""
+	@echo "  Running containers on real drone:"
 	@echo "    make up-real          - Start hardware stack on $(BOARD)"
 	@echo "    make up-real-d        - Start hardware stack on $(BOARD) in background (detached)"
 	@echo "    make down-real        - Stop hardware stack on $(BOARD)"
@@ -111,27 +111,13 @@ build-base-real:
 build-real: build-base-real
 	DOCKER_DEFAULT_PLATFORM=linux/arm64 docker compose -f $(COMPOSE_REAL) build
 
-save-real:
-	@mkdir -p ./docker_save
-	@echo "--> Saving real docker images to docker_save/$(BOARD).tar.gz ..."
-	docker save $(REAL_IMAGES) | gzip > ./docker_save/$(BOARD).tar.gz
-	@echo "--> Saved."
-
-push-save:
-	@echo "--> Copying to $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/docker_save/$(BOARD).tar.gz ..."
-	ssh $(DRONE_USER)@$(DRONE_IP) "mkdir -p ~/pickme_drone/docker_save"
-	scp ./docker_save/$(BOARD).tar.gz $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/docker_save/
-	@echo "--> Loading images on drone..."
-	ssh $(DRONE_USER)@$(DRONE_IP) "gzip -dc ~/pickme_drone/docker_save/$(BOARD).tar.gz | sudo docker load"
+push-images:
+	@echo "--> Pushing to $(DRONE_USER)@$(DRONE_IP)..."
+	docker save $(REAL_IMAGES) | gzip | pv -N "Pushing to $(DRONE_USER)@$(DRONE_IP)" | ssh $(DRONE_USER)@$(DRONE_IP) "gunzip | sudo docker load"
 	@echo "--> Done."
-
-push-real: save-real push-save
-
-push-dir: sync
 
 sync:
 	@chmod +x docker/fcu-entrypoint.sh 2>/dev/null || true
-	@mkdir -p workspace/core/{build,install,log} workspace/camera/{build,install,log} workspace/perception/{build,install,log} workspace/dev
 	@echo "--> Syncing project to $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/ ..."
 	rsync -avz --exclude '.git' --exclude 'build' --exclude 'install' --exclude 'log' \
 		--exclude '.DS_Store' --exclude 'sim' --exclude 'docker_save' \
@@ -142,41 +128,41 @@ sync:
 
 # ── ROS 2 In-Container Builds (Root -> Host Volumes) ──
 build-ros-core:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root core \
+	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root core \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_odometry pickme_offboard pickme_bringup"
 
 build-ros-camera:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root camera \
+	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root camera \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
 
 build-ros-perception:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root perception \
+	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root perception \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
 
 # ── Container Restarts ──
 restart-camera:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) restart camera
+	docker compose --env-file .env -f $(COMPOSE_REAL) restart camera
 
 restart-core:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) restart core
+	docker compose --env-file .env -f $(COMPOSE_REAL) restart core
 
 restart-fcu:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) restart fcu
+	docker compose --env-file .env -f $(COMPOSE_REAL) restart fcu
 
 restart-perception:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) restart perception
+	docker compose --env-file .env -f $(COMPOSE_REAL) restart perception
 
 up-real:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) up
+	docker compose --env-file .env -f $(COMPOSE_REAL) up
 
 up-real-d:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) up -d
+	docker compose --env-file .env -f $(COMPOSE_REAL) up -d
 
 down-real:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) down
+	docker compose --env-file .env -f $(COMPOSE_REAL) down
 
 logs-real:
-	sudo docker compose --env-file .env -f $(COMPOSE_REAL) logs -f
+	docker compose --env-file .env -f $(COMPOSE_REAL) logs -f
 
 # ── Shells ──
 shell-dev:

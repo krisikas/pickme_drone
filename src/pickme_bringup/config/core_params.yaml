@@ -19,11 +19,11 @@ odometry_node:
     imu_frame: "imu_link"
 
     # OakD-Lite Camera Mount Offsets (on x500_depth model in FLU frame)
-    camera_offset_x: 0.12
-    camera_offset_y: 0.03
-    camera_offset_z: 0.242
+    camera_offset_x: 0.06
+    camera_offset_y: 0.0
+    camera_offset_z: 0.055
     camera_roll: 0.0
-    camera_pitch: 0.0
+    camera_pitch: -0.087
     camera_yaw: 0.0
 
     publish_camera_tf: true
