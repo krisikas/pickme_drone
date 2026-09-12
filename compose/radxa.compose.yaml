@@ -69,7 +69,7 @@ services:
       - RGB_FPS=${RGB_FPS:-30}
       - DEPTH_WIDTH=${DEPTH_WIDTH:-640}
       - DEPTH_HEIGHT=${DEPTH_HEIGHT:-480}
-      - DEPTH_FPS=${DEPTH_FPS:-30}
+      - DEPTH_FPS=${DEPTH_FPS:-15}
       - ENABLE_POINTCLOUD=${ENABLE_POINTCLOUD:-true}
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
@@ -93,7 +93,7 @@ services:
     network_mode: host
     ipc: host
     restart: unless-stopped
-    cpuset: "${CORE_CPUSET:-4,5,6,7}"
+    cpuset: "${CORE_CPUSET:-4,5}"
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
@@ -166,6 +166,9 @@ services:
     volumes:
       - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/foxglove/build:/ws/build
+      - ../workspace/foxglove/install:/ws/install
+      - ../workspace/foxglove/log:/ws/log
     command: >
       bash -c "source /opt/ros/humble/setup.bash &&
       if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
@@ -182,6 +185,7 @@ services:
       context: ..
       dockerfile: docker/dev.Dockerfile
     network_mode: host
+    cpuset: "${DEV_CPUSET:-1}"
     ipc: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}

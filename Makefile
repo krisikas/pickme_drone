@@ -118,12 +118,14 @@ push-images:
 
 sync:
 	@chmod +x docker/fcu-entrypoint.sh 2>/dev/null || true
+	@mkdir -p workspace/{core,camera,perception,foxglove}/{build,install,log} workspace/dev 2>/dev/null || true
 	@echo "--> Syncing project to $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/ ..."
 	rsync -avz --exclude '.git' --exclude 'build' --exclude 'install' --exclude 'log' \
 		--exclude '.DS_Store' --exclude 'sim' --exclude 'docker_save' \
 		--exclude 'workspace/*/build' --exclude 'workspace/*/install' --exclude 'workspace/*/log' \
 		--exclude 'workspace/build' --exclude 'workspace/install' --exclude 'workspace/log' \
 		./ $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/
+	@ssh $(DRONE_USER)@$(DRONE_IP) "mkdir -p ~/pickme_drone/workspace/{core,camera,perception,foxglove}/{build,install,log} && sudo chown -R 1000:1000 ~/pickme_drone/workspace" 2>/dev/null || true
 	@echo "--> Project tree synced."
 
 # ── ROS 2 In-Container Builds (Root -> Host Volumes) ──
@@ -139,7 +141,14 @@ build-ros-perception:
 	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root perception \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
 
+build-ros-foxglove:
+	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root foxglove \
+		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
+
 # ── Container Restarts ──
+restart-real:
+	docker compose --env-file .env -f $(COMPOSE_REAL) restart
+
 restart-camera:
 	docker compose --env-file .env -f $(COMPOSE_REAL) restart camera
 
@@ -151,6 +160,9 @@ restart-fcu:
 
 restart-perception:
 	docker compose --env-file .env -f $(COMPOSE_REAL) restart perception
+
+restart-foxglove:
+	docker compose --env-file .env -f $(COMPOSE_REAL) restart foxglove
 
 up-real:
 	docker compose --env-file .env -f $(COMPOSE_REAL) up
@@ -182,6 +194,9 @@ shell-fcu:
 
 shell-camera:
 	docker compose -f $(COMPOSE_REAL) exec camera bash
+
+shell-foxglove:
+	docker compose -f $(COMPOSE_SIM) exec dev bash 2>/dev/null || docker compose -f $(COMPOSE_REAL) exec dev bash
 
 shell-px4:
 	docker attach pickme-sim
