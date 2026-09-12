@@ -1,4 +1,8 @@
 .DS_Store
-workspace/
 .env
 docker_save/
+workspace/camera/*
+workspace/perception/*
+workspace/core/*
+workspace/foxglove/*
+workspace/dev/*

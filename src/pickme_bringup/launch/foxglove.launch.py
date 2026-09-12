@@ -33,7 +33,7 @@ def generate_launch_description():
             parameters=[{
                 'port': port,
                 'use_sim_time': use_sim_time,
-                'send_buffer_limit': 100000000,
+                'send_buffer_limit': 10000000,  # Reduced from 100MB to 10MB to eliminate 20s bufferbloat latency
                 'use_compression': False,  # Disabled: software zlib chokes weak Cortex-A55 cores on ARM SBC
             }],
         ),
