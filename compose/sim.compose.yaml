@@ -14,6 +14,8 @@ networks:
 
 name: pickme_drone
 services:
+
+  # ── 1. Gazebo service ──────────────────────────────────────────────────────
   sim:
     container_name: pickme-sim
     ipc: host
@@ -24,27 +26,32 @@ services:
       dockerfile: docker/sim.Dockerfile
     networks:
       - ros_net
+    env_file:
+      - ../.env
     environment:
       - PX4_SIM_MODEL=gz_x500_depth
       - GZ_PARTITION=sim
       - ROS_DOMAIN_ID=0
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
-      # NO GPS AND MAG
-      # 1. ОТКЛЮЧЕНИЕ GPS
+      - ENABLE_MAVLINK_ROUTER=${ENABLE_MAVLINK_ROUTER:-true}
+      - MAVLINK_TCP_PORT=${MAVLINK_TCP_PORT:-5760}
+      - MAVLINK_QGC_IP=${MAVLINK_QGC_IP:-127.0.0.1}
+      - MAVLINK_QGC_PORT=${MAVLINK_QGC_PORT:-14550}
+      # 1. Disable gps
       - PX4_PARAM_SYS_HAS_GPS=0
       - PX4_PARAM_EKF2_GPS_CTRL=0 
       - PX4_PARAM_COM_ARM_WO_GPS=1
 
-      # 2. ПОЛНОЕ ОТКЛЮЧЕНИЕ МАГНИТОМЕТРА (как на Matek H743-SLIM)
+      # 2. Disable mag
       - PX4_PARAM_SYS_HAS_MAG=0
       - PX4_PARAM_EKF2_MAG_TYPE=5
       - PX4_PARAM_COM_ARM_MAG_STR=0
 
-      # 3. БАРОМЕТР (на Matek H743-SLIM встроен барометр DPS310)
+      # 3. Baro
       - PX4_PARAM_SYS_HAS_BARO=1
       - PX4_PARAM_EKF2_BARO_CTRL=1 
 
-      # 4. НАСТРОЙКА ВИЗУАЛЬНОЙ ОДОМЕТРИИ (EV), ОПТИЧЕСКОГО ПОТОКА И ЛИДАРА
+      # 4. Optical flow
       - PX4_PARAM_EKF2_EV_CTRL=15
       - PX4_PARAM_EKF2_EV_DELAY=0
       - PX4_PARAM_EKF2_OF_CTRL=1
@@ -54,7 +61,7 @@ services:
       - PX4_PARAM_EKF2_RNG_CTRL=1
       - PX4_PARAM_EKF2_HGT_REF=2
 
-      # 5. СНЯТИЕ БЛОКИРОВОК СВЯЗИ И ИНДОР-РЕЖИМЫ
+      # 5. Disable outdoor failsafe
       - PX4_PARAM_NAV_DLL_ACT=0
       - PX4_PARAM_NAV_RCL_ACT=0         
       - PX4_PARAM_COM_RC_IN_MODE=1
@@ -62,9 +69,10 @@ services:
       - PX4_PARAM_COM_FLTMODE6=3
 
     ports:
-      - "5760:5760" # QGroundControl MAVLink over TCP
+      - "${MAVLINK_TCP_PORT:-5760}:${MAVLINK_TCP_PORT:-5760}"
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../docker/entrypoints/sim-entrypoint.sh:/home/developer/entrypoint.sh:ro
       - ../sim/worlds/default.sdf:/home/developer/PX4-Autopilot/Tools/simulation/gz/worlds/default.sdf:ro
       - ../sim/worlds/materials:/home/developer/PX4-Autopilot/Tools/simulation/gz/worlds/materials:ro
       - ../sim/models/OakD-Lite/model.sdf:/home/developer/PX4-Autopilot/Tools/simulation/gz/models/OakD-Lite/model.sdf:ro
@@ -72,6 +80,7 @@ services:
       - ../sim/models/x500_depth/model.sdf:/home/developer/PX4-Autopilot/Tools/simulation/gz/models/x500_depth/model.sdf:ro
       - ../sim/models/carpet_plane:/home/developer/PX4-Autopilot/Tools/simulation/gz/models/carpet_plane:ro
 
+  # ── 2. Gazebo perception service ───────────────────────────────────────────
   sim-perception:
     container_name: pickme-sim-perception
     ipc: host
@@ -85,79 +94,121 @@ services:
       - GZ_PARTITION=sim
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../sim/config/bridge.yaml:/etc/pickme/bridge.yaml:ro
     depends_on:
       - core
+
+  # ── 3. Mission-Critical Flight Core ────────────────────────────────────────
   core:
     container_name: pickme-core
-    ipc: host
+    image: pickme-core
     build:
       context: ..
       dockerfile: docker/core.Dockerfile
-    networks:
-      - ros_net
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    cpuset: "${CORE_CPUSET:-4,5}"
     environment:
-      - ROS_DOMAIN_ID=0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
-      - USE_SIM_TIME=true
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      - PUBLISH_CAMERA_TF=${PUBLISH_CAMERA_TF:-true}
+      - LAUNCH_OFFBOARD=${LAUNCH_OFFBOARD:-false}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_odometry:/ws/src/pickme_odometry
+      - ../src/pickme_offboard:/ws/src/pickme_offboard
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/core/build:/ws/build
+      - ../workspace/core/install:/ws/install
+      - ../workspace/core/log:/ws/log
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup core.launch.py"
     depends_on:
       - sim
 
+  # ── 4. RTAB-Map Visual Odometry & 3D SLAM ─────────────────────────────────
   perception:
     container_name: pickme-perception
-    ipc: host
+    image: pickme-perception
     build:
       context: ..
       dockerfile: docker/perception.Dockerfile
-    networks:
-      - ros_net
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    cpuset: "${PERCEPTION_CPUSET:-6,7}"
     environment:
-      - ROS_DOMAIN_ID=0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
-      - SLAM_ENABLE=true
-      - USE_SIM_TIME=true
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      - SLAM_ENABLE=${SLAM_ENABLE:-false}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/perception/build:/ws/build
+      - ../workspace/perception/install:/ws/install
+      - ../workspace/perception/log:/ws/log
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup perception.launch.py"
     depends_on:
       - core
       - sim-perception
 
+  # ── 5. Foxglove WebSocket Telemetry Bridge ─────────────────────────────────
   foxglove:
     container_name: pickme-foxglove
-    ipc: host
+    image: pickme-foxglove
     build:
       context: ..
       dockerfile: docker/foxglove.Dockerfile
-    networks:
-      - ros_net
+    network_mode: host
+    ipc: host
+    restart: unless-stopped
+    cpuset: "${FOXGLOVE_CPUSET:-3}"
     environment:
-      - ROS_DOMAIN_ID=0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
-    ports:
-      - "8765:8765"
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
+      - FOXGLOVE_PORT=${FOXGLOVE_PORT:-8765}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../src/pickme_bringup:/ws/src/pickme_bringup
+      - ../workspace/foxglove/build:/ws/build
+      - ../workspace/foxglove/install:/ws/install
+      - ../workspace/foxglove/log:/ws/log
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash &&
+      if [ ! -f /ws/install/setup.bash ]; then cd /ws && colcon build --symlink-install; fi &&
+      source /ws/install/setup.bash &&
+      exec ros2 launch pickme_bringup foxglove.launch.py"
     depends_on:
       - core
 
+  # ── 6. Autonomous Mission Sandbox ──────────────────────────────────────────
   dev:
     container_name: pickme-dev
-    ipc: host
+    image: pickme-dev
     build:
       context: ..
       dockerfile: docker/dev.Dockerfile
-    networks:
-      - ros_net
+    network_mode: host
+    cpuset: "${DEV_CPUSET:-1}"
+    ipc: host
     environment:
-      - ROS_DOMAIN_ID=0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
-      - USE_SIM_TIME=true
+      - USE_SIM_TIME=${USE_SIM_TIME:-true}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
-      - ../workspace:/home/developer/workspace
-    command: tail -f /dev/null
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../workspace/dev:/home/developer/workspace
     depends_on:
       - core

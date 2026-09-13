@@ -42,8 +42,8 @@ services:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/etc/pickme/fastdds.xml
     volumes:
-      - ../docker/fastdds.xml:/etc/pickme/fastdds.xml:ro
-      - ../docker/fcu-entrypoint.sh:/usr/local/bin/fcu-entrypoint.sh:ro
+      - ../config/fastdds.xml:/etc/pickme/fastdds.xml:ro
+      - ../docker/entrypoints/fcu-entrypoint.sh:/usr/local/bin/fcu-entrypoint.sh:ro
 
   # ── 2. Real Depth Camera Driver ────────────────────────────────────────────
   camera:
@@ -72,7 +72,7 @@ services:
       - DEPTH_FPS=${DEPTH_FPS:-15}
       - ENABLE_POINTCLOUD=${ENABLE_POINTCLOUD:-true}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_bringup:/ws/src/pickme_bringup
       - ../workspace/camera/build:/ws/build
       - ../workspace/camera/install:/ws/install
@@ -101,7 +101,7 @@ services:
       - PUBLISH_CAMERA_TF=false
       - LAUNCH_OFFBOARD=${LAUNCH_OFFBOARD:-false}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_odometry:/ws/src/pickme_odometry
       - ../src/pickme_offboard:/ws/src/pickme_offboard
       - ../src/pickme_bringup:/ws/src/pickme_bringup
@@ -133,7 +133,7 @@ services:
       - USE_SIM_TIME=false
       - SLAM_ENABLE=${SLAM_ENABLE:-false}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_bringup:/ws/src/pickme_bringup
       - ../workspace/perception/build:/ws/build
       - ../workspace/perception/install:/ws/install
@@ -164,7 +164,7 @@ services:
       - USE_SIM_TIME=false
       - FOXGLOVE_PORT=${FOXGLOVE_PORT:-8765}
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_bringup:/ws/src/pickme_bringup
       - ../workspace/foxglove/build:/ws/build
       - ../workspace/foxglove/install:/ws/install
@@ -192,7 +192,7 @@ services:
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - USE_SIM_TIME=false
     volumes:
-      - ../docker/fastdds.xml:/home/developer/fastdds.xml:ro
+      - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../workspace/dev:/home/developer/workspace
     depends_on:
       - core

@@ -35,7 +35,7 @@ RUN git clone -b v3 https://github.com/mavlink-router/mavlink-router.git /tmp/ma
     rm -rf /tmp/mavlink-router
 
 # ── Entrypoint Script ──
-COPY docker/fcu-entrypoint.sh /usr/local/bin/fcu-entrypoint.sh
+COPY docker/entrypoints/fcu-entrypoint.sh /usr/local/bin/fcu-entrypoint.sh
 RUN chmod +x /usr/local/bin/fcu-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/fcu-entrypoint.sh"]

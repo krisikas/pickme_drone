@@ -9,7 +9,7 @@ MODELS_DIR="$SCRIPT_DIR/models"
 echo "=== Starting Gazebo Harmonic GUI for PickmeDrone ==="
 
 # 1. Find simulation container (supports 'sim', 'pickme-sim', 'px4-sim')
-CONTAINER_ID=$(docker compose -f "$PROJECT_DIR/compose/compose.sim.yaml" ps -q sim 2>/dev/null || docker compose -f "$PROJECT_DIR/compose.sim.yaml" ps -q sim 2>/dev/null || true)
+CONTAINER_ID=$(docker compose -f "$PROJECT_DIR/compose/sim.compose.yaml" ps -q sim 2>/dev/null || docker compose -f "$PROJECT_DIR/sim.compose.yaml" ps -q sim 2>/dev/null || true)
 if [ -z "$CONTAINER_ID" ]; then
     CONTAINER_ID=$(docker ps -q -f name=pickme-sim 2>/dev/null || true)
 fi

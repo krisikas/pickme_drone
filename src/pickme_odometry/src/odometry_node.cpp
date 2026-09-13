@@ -91,7 +91,14 @@ void OdometryNode::publish_static_transforms() {
   transforms.push_back(t_cam);
 
   // 2. Camera Optical Frames (REP-103 standard RDF)
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Publish camera tf parameter is: %i", 
+    publish_camera_tf_);
   if (publish_camera_tf_) {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Publishing camera tf.");
     auto opt_q = euler_to_quaternion(-PI / 2.0, 0.0, -PI / 2.0);
 
     // 2a. camera_link -> camera_depth_frame (FLU)

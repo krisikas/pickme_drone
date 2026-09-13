@@ -64,7 +64,7 @@ RUN git clone -b release/1.16 https://github.com/PX4/PX4-Autopilot.git --recursi
 
 # 6. Copy entrypoint script
 USER root
-COPY docker/sim-entrypoint.sh /home/$USERNAME/entrypoint.sh
+COPY docker/entrypoints/sim-entrypoint.sh /home/$USERNAME/entrypoint.sh
 RUN chmod +x /home/$USERNAME/entrypoint.sh
 USER $USERNAME
 

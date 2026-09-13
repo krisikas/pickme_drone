@@ -84,8 +84,9 @@ Both `pickme-camera` (real hardware) and `pickme-sim-perception` (simulation) MU
 - **Real drone**: `network_mode: host` for all containers. ROS 2 DDS discovery works automatically.
 
 ## Repository Layout
-- `compose/`: Compose files (`compose/compose.sim.yaml`, `compose/compose.radxa.yaml`).
-- `docker/`: Dockerfiles and container entrypoints (`docker/sim-entrypoint.sh`).
+- `compose/`: Compose files (`compose/sim.compose.yaml`, `compose/radxa.compose.yaml`).
+- `config/`: Middleware configuration (`config/fastdds.xml`).
+- `docker/`: Dockerfiles and container entrypoints (`docker/entrypoints/`).
 - `sim/`: Gazebo GUI launch script (`sim/run_gui.sh`), bridge config (`sim/config/bridge.yaml`), custom worlds and models.
 - `src/`: ROS 2 packages (`pickme_bringup`, `pickme_odometry`, `pickme_offboard`, `pickme_interfaces`).
 

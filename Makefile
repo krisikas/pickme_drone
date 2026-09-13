@@ -96,7 +96,7 @@ down-sim:
 logs-sim:
 	docker compose -f $(COMPOSE_SIM) logs -f
 
-gui:
+gz-gui:
 	./sim/run_gui.sh
 
 gz-topics:
@@ -117,10 +117,10 @@ push-images:
 	@echo "--> Done."
 
 sync:
-	@chmod +x docker/fcu-entrypoint.sh 2>/dev/null || true
+	@chmod +x docker/entrypoints/*.sh 2>/dev/null || true
 	@mkdir -p workspace/{core,camera,perception,foxglove}/{build,install,log} workspace/dev 2>/dev/null || true
 	@echo "--> Syncing project to $(DRONE_USER)@$(DRONE_IP):~/pickme_drone/ ..."
-	rsync -avz --exclude '.git' --exclude 'build' --exclude 'install' --exclude 'log' \
+	rsync -avz --exclude '.git' --exclude '.env' --exclude 'build' --exclude 'install' --exclude 'log' \
 		--exclude '.DS_Store' --exclude 'sim' --exclude 'docker_save' \
 		--exclude 'workspace/*/build' --exclude 'workspace/*/install' --exclude 'workspace/*/log' \
 		--exclude 'workspace/build' --exclude 'workspace/install' --exclude 'workspace/log' \
@@ -131,18 +131,26 @@ sync:
 # ── ROS 2 In-Container Builds (Root -> Host Volumes) ──
 build-ros-core:
 	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root core \
+		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_odometry pickme_offboard pickme_bringup"  2>/dev/null || \
+		docker compose --env-file .env -f $(COMPOSE_SIM) exec -u root core \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_odometry pickme_offboard pickme_bringup"
 
 build-ros-camera:
 	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root camera \
+		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"  2>/dev/null || \
+		docker compose --env-file .env -f $(COMPOSE_SIM) exec -u root camera \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
 
 build-ros-perception:
 	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root perception \
+		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"  2>/dev/null || \
+		docker compose --env-file .env -f $(COMPOSE_SIM) exec -u root perception \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
 
 build-ros-foxglove:
 	docker compose --env-file .env -f $(COMPOSE_REAL) exec -u root foxglove \
+		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"  2>/dev/null || \
+		docker compose --env-file .env -f $(COMPOSE_SIM) exec -u root foxglove \
 		bash -c "source /opt/ros/humble/setup.bash && cd /ws && colcon build --symlink-install --packages-select pickme_bringup"
 
 # ── Container Restarts ──
