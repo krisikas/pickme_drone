@@ -40,6 +40,7 @@ services:
       - MAVLINK_QGC_IP=${MAVLINK_QGC_IP:-10.42.0.255}
       - MAVLINK_QGC_PORT=${MAVLINK_QGC_PORT:-14550}
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-1}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/etc/pickme/fastdds.xml
     volumes:
       - ../config/fastdds.xml:/etc/pickme/fastdds.xml:ro
@@ -56,11 +57,12 @@ services:
     ipc: host
     restart: unless-stopped
     privileged: true
-    cpuset: "${CAMERA_CPUSET:-4,5}"
+    cpuset: "${CAMERA_CPUSET:-5}"
     devices:
       - /dev/bus/usb:/dev/bus/usb
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-1}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - USE_SIM_TIME=false
       - CAMERA_TYPE=${CAMERA_TYPE:-realsense}
@@ -70,7 +72,7 @@ services:
       - DEPTH_WIDTH=${DEPTH_WIDTH:-640}
       - DEPTH_HEIGHT=${DEPTH_HEIGHT:-480}
       - DEPTH_FPS=${DEPTH_FPS:-15}
-      - ENABLE_POINTCLOUD=${ENABLE_POINTCLOUD:-true}
+      - ENABLE_POINTCLOUD=${ENABLE_POINTCLOUD:-false}
     volumes:
       - ../config/fastdds.xml:/home/developer/fastdds.xml:ro
       - ../src/pickme_bringup:/ws/src/pickme_bringup
@@ -93,9 +95,10 @@ services:
     network_mode: host
     ipc: host
     restart: unless-stopped
-    cpuset: "${CORE_CPUSET:-4,5}"
+    cpuset: "${CORE_CPUSET:-4}"
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-1}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - USE_SIM_TIME=false
       - PUBLISH_CAMERA_TF=false
@@ -129,6 +132,7 @@ services:
     cpuset: "${PERCEPTION_CPUSET:-6,7}"
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-1}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - USE_SIM_TIME=false
       - SLAM_ENABLE=${SLAM_ENABLE:-false}
@@ -160,6 +164,7 @@ services:
     cpuset: "${FOXGLOVE_CPUSET:-3}"
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-1}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - USE_SIM_TIME=false
       - FOXGLOVE_PORT=${FOXGLOVE_PORT:-8765}
@@ -189,6 +194,7 @@ services:
     ipc: host
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-1}
       - FASTRTPS_DEFAULT_PROFILES_FILE=/home/developer/fastdds.xml
       - USE_SIM_TIME=false
     volumes:

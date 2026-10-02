@@ -12,22 +12,35 @@ rgbd_odometry:
     publish_tf: false                   # Disabled: Odometry is bridged to PX4 EKF2
     wait_for_transform: 0.2
     approx_sync: true
-    approx_sync_max_interval: 0.10
+    approx_sync_max_interval: 0.04      # 40 мс: исключает рассинхрон RGB и Depth
     sync_queue_size: 10
     topic_queue_size: 10
     subscribe_rgbd: false
     wait_imu_to_init: false
-
-    # RTAB-Map Odometry Algorithmic Settings
-    Odom/Strategy: "1"                  # 0=Frame-to-Map (robust visual tracking)
-    Vis/CorType: "0"                    # 0=Features Matching
-    Vis/FeatureType: "8"                # 8=ORB (fast native OpenCV)
-    Vis/MaxFeatures: "400"              # Max features extracted per frame
-    Vis/MinInliers: "10"                # Min inliers for valid VO step
-    Vis/InlierDistance: "0.1"           # 10 cm max 3D distance for inlier
-    Odom/KeyFrameThr: "0.0"             # Publish at full camera frame rate
-    Odom/ResetCountdown: "1"
-    Odom/GuessMotion: "true"
+    # 1. Базовая стратегия: Frame-to-Map с жестким контролем ресурсов
+    Odom/Strategy: "0"                  # 0 = Frame-to-Map (устойчиво к тряске и потерям кадров)
+    OdomF2M/MaxSize: "1000"             # Ограничение размера локальной карты (экономит CPU)
+    OdomF2M/BundleAdjustment: "0"       # Выключаем тяжелый BA для гарантированных 15-30 FPS
+    Odom/KeyFrameThr: "0.35"            # Добавление ключевого кадра при снижении перекрытия
+    Odom/ResetCountdown: "0"            # КРИТИЧНО: 0 = запрет сброса в ноль при срыве!
+    Odom/GuessMotion: "true"            # Экстраполяция движения по предыдущей скорости
+    Odom/Holonomic: "true"              # 6-DOF движение в пространстве
+    # 2. Трекинг фич: Оптический поток KLT с углами GFTT (субпиксельная плавность)
+    Vis/CorType: "1"                    # 1 = Optical Flow (KLT) — плавно, без шума дескрипторов
+    Vis/FeatureType: "6"                # 6 = GFTT (Good Features to Track)
+    Vis/MaxFeatures: "600"              # Всего фич на кадр
+    Vis/GridRows: "3"                   # 3 строки сетки
+    Vis/GridCols: "4"                   # 4 колонки сетки (равномерный захват горизонта)
+    GFTT/MinDistance: "7"               # Минимальная дистанция между фичами в пикселях
+    GFTT/QualityLevel: "0.01"
+    # 3. Фильтрация выбросов и шумов глубины D435
+    Vis/MinInliers: "18"                # Минимум 18 подтвержденных точек для шага одометрии
+    Vis/InlierDistance: "0.15"          # Допуск ошибки 3D-проекции 15 см
+    Vis/MinDepth: "0.2"                 # Игнорировать ближе 30 см (слепая зона D435)
+    Vis/MaxDepth: "6.0"                 # Игнорировать дальше 4.0 м (отсекает квадратичный шум)
+    # 4. Аварийный отсекатель физически невозможных скачков
+    Odom/MaxTranslation: "0.5"          # Браковать шаг, если смещение > 0.5 м за кадр
+    Odom/MaxRotation: "0.5" 
 
 # ── 3D SLAM & Loop Closure Engine ─────────────────────────────────────────────
 rtabmap:
